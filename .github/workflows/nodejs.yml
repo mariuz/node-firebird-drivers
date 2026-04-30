@@ -24,6 +24,10 @@ jobs:
           - 24.x
           - 25.x
 
+    env:
+      ISC_USER: sysdba
+      ISC_PASSWORD: masterkey
+
     steps:
       - uses: actions/checkout@v6
 
@@ -77,8 +81,6 @@ jobs:
         run: |
           sudo mkdir /tmp/node-fb
           sudo chmod 777 /tmp/node-fb
-          export ISC_USER=sysdba
-          export ISC_PASSWORD=masterkey
           export NODE_FB_TEST_TMP_DIR=/tmp/node-fb
           corepack yarn test
 
