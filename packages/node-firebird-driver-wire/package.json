@@ -50,7 +50,8 @@
   },
   "dependencies": {
     "@types/node": "^22.13.10",
-    "node-firebird-driver": "workspace:^"
+    "node-firebird-driver": "workspace:^",
+    "unix-crypt-td-js": "^1.1.4"
   },
   "devDependencies": {
     "eslint": "^9.39.2",
