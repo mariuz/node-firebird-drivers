@@ -198,6 +198,35 @@ describe('node-firebird-driver-wire', () => {
     });
   });
 
+  test('executes a prepared statement without a result set', async () => {
+    await withCreatedDatabase('wire-execute-statement.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const attachment = await wireProtocol.attach(database, createAttachDpb());
+        const transaction = await wireProtocol.startTransaction(createTpb());
+        const statement1 = await wireProtocol.allocateStatement();
+        const statement2 = await wireProtocol.allocateStatement();
+
+        try {
+          await wireProtocol.prepareStatement(transaction, statement1, 'create table t1 (n1 integer)');
+          await wireProtocol.executeStatement(transaction, statement1);
+
+          await wireProtocol.prepareStatement(transaction, statement2, 'create table t1 (n1 integer)');
+          await expect(wireProtocol.executeStatement(transaction, statement2)).rejects.toThrow(/Firebird|exist/);
+        } finally {
+          await wireProtocol.freeStatement(statement2);
+          await wireProtocol.freeStatement(statement1);
+        }
+
+        await wireProtocol.rollback(transaction);
+        await wireProtocol.detach(attachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
   test('returns a structured Firebird error for invalid SQL preparation', async () => {
     await withCreatedDatabase('wire-invalid-prepare.fdb', async (database) => {
       const wireProtocol = createProtocol();

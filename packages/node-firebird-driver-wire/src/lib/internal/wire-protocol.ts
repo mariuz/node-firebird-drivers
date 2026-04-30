@@ -51,6 +51,7 @@ import {
   op_disconnect,
   op_drop_database,
   op_dummy,
+  op_execute,
   op_free_statement,
   op_ping,
   op_prepare_statement,
@@ -304,6 +305,32 @@ export class WireProtocol {
 
     const response = await this.readResponse();
     assertSuccessfulResponse(response.status, 'Firebird prepare statement failed');
+  }
+
+  async executeStatement(transaction: TransactionHandle, statement: StatementHandle): Promise<void> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error('A database must be attached before executing a statement.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_execute);
+    writer.writeInt32(statement.handle);
+    writer.writeInt32(transaction.handle);
+    writer.writeBuffer(Buffer.alloc(0));
+    writer.writeInt32(0);
+    writer.writeInt32(0);
+    writer.writeInt32(0);
+    writer.writeInt32(0);
+    writer.writeInt32(0);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while executing a statement.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird execute statement failed');
   }
 
   async freeStatement(statement: StatementHandle): Promise<void> {

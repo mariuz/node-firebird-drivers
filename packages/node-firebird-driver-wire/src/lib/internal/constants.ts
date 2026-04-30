@@ -14,6 +14,7 @@ export const op_commit = 30;
 export const op_rollback = 31;
 export const op_commit_retaining = 50;
 export const op_allocate_statement = 62;
+export const op_execute = 63;
 export const op_free_statement = 67;
 export const op_prepare_statement = 68;
 export const op_dummy = 71;
