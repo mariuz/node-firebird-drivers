@@ -66,7 +66,10 @@ describe('node-firebird-driver-wire', () => {
   });
 
   async function withCreatedDatabase<T>(name: string, callback: (database: string) => Promise<T>): Promise<T> {
-    const database = getDriverTestDatabasePath(testConfig, name);
+    const uniqueName = `${name.replace(/\.fdb$/i, '')}-${process.pid}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}.fdb`;
+    const database = getDriverTestDatabasePath(testConfig, uniqueName);
     const createProtocolInstance = createProtocol(validPassword);
     const createdAttachment = await createProtocolInstance.createDatabase(database, createDatabaseDpb(true));
 
@@ -169,6 +172,50 @@ describe('node-firebird-driver-wire', () => {
         await wireProtocol.rollbackRetaining(transaction2);
         await wireProtocol.commit(transaction2);
 
+        await wireProtocol.detach(attachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
+  test('allocates, prepares and frees a statement', async () => {
+    await withCreatedDatabase('wire-prepare-statement.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const attachment = await wireProtocol.attach(database, createAttachDpb());
+        const transaction = await wireProtocol.startTransaction(createTpb());
+        const statement = await wireProtocol.allocateStatement();
+
+        await wireProtocol.prepareStatement(transaction, statement, 'create table t1 (n1 integer)');
+        await wireProtocol.freeStatement(statement);
+        await wireProtocol.rollback(transaction);
+        await wireProtocol.detach(attachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
+  test('returns a structured Firebird error for invalid SQL preparation', async () => {
+    await withCreatedDatabase('wire-invalid-prepare.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const attachment = await wireProtocol.attach(database, createAttachDpb());
+        const transaction = await wireProtocol.startTransaction(createTpb());
+        const statement = await wireProtocol.allocateStatement();
+
+        try {
+          await expect(
+            wireProtocol.prepareStatement(transaction, statement, 'create select t1 (n1 integer)'),
+          ).rejects.toThrow(/Firebird|Dynamic SQL Error|SQL error code/);
+        } finally {
+          await wireProtocol.freeStatement(statement);
+        }
+
+        await wireProtocol.rollback(transaction);
         await wireProtocol.detach(attachment);
       } finally {
         await wireProtocol.close();

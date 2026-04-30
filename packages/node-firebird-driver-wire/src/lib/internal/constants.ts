@@ -13,6 +13,9 @@ export const op_transaction = 29;
 export const op_commit = 30;
 export const op_rollback = 31;
 export const op_commit_retaining = 50;
+export const op_allocate_statement = 62;
+export const op_free_statement = 67;
+export const op_prepare_statement = 68;
 export const op_dummy = 71;
 export const op_rollback_retaining = 86;
 export const op_drop_database = 81;
@@ -74,6 +77,24 @@ export const isc_arg_cstring = 3;
 export const isc_arg_number = 4;
 export const isc_arg_interpreted = 5;
 export const isc_arg_warning = 18;
+
+export const isc_info_sql_select = 4;
+export const isc_info_sql_bind = 5;
+export const isc_info_sql_describe_vars = 7;
+export const isc_info_sql_describe_end = 8;
+export const isc_info_sql_sqlda_seq = 9;
+export const isc_info_sql_type = 11;
+export const isc_info_sql_sub_type = 12;
+export const isc_info_sql_scale = 13;
+export const isc_info_sql_length = 14;
+export const isc_info_sql_field = 16;
+export const isc_info_sql_relation = 17;
+export const isc_info_sql_owner = 18;
+export const isc_info_sql_alias = 19;
+export const isc_info_sql_stmt_type = 21;
+export const isc_info_sql_relation_alias = 25;
+
+export const DSQL_drop = 2;
 
 export const AUTH_PLUGINS = ['Srp256', 'Srp', 'Legacy_Auth'] as const;
 export type AuthPluginName = (typeof AUTH_PLUGINS)[number];

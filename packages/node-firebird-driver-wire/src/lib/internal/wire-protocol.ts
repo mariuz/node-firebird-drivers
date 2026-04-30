@@ -15,14 +15,31 @@ import {
   CNCT_user,
   CNCT_user_verification,
   CONNECT_VERSION3,
+  DSQL_drop,
   isc_dpb_auth_plugin_list,
   isc_dpb_auth_plugin_name,
   isc_dpb_specific_auth_data,
   isc_dpb_utf8_filename,
   isc_dpb_version1,
   isc_dpb_version2,
+  isc_info_sql_alias,
+  isc_info_sql_bind,
+  isc_info_sql_describe_end,
+  isc_info_sql_describe_vars,
+  isc_info_sql_field,
+  isc_info_sql_length,
+  isc_info_sql_owner,
+  isc_info_sql_relation,
+  isc_info_sql_relation_alias,
+  isc_info_sql_scale,
+  isc_info_sql_select,
+  isc_info_sql_sqlda_seq,
+  isc_info_sql_stmt_type,
+  isc_info_sql_sub_type,
+  isc_info_sql_type,
   op_accept,
   op_accept_data,
+  op_allocate_statement,
   op_attach,
   op_cond_accept,
   op_commit,
@@ -34,14 +51,15 @@ import {
   op_disconnect,
   op_drop_database,
   op_dummy,
+  op_free_statement,
   op_ping,
+  op_prepare_statement,
   op_reject,
   op_response,
   op_rollback,
   op_rollback_retaining,
   op_transaction,
   ptype_batch_send,
-  ptype_lazy_send,
   SUPPORTED_PROTOCOLS,
   WIRE_CRYPT_ENABLED,
 } from './constants';
@@ -66,6 +84,10 @@ export interface TransactionHandle {
   readonly handle: number;
 }
 
+export interface StatementHandle {
+  readonly handle: number;
+}
+
 interface AcceptMessage {
   readonly authenticated: boolean;
   readonly pluginName: string;
@@ -83,6 +105,32 @@ interface DpbClumplet {
   readonly tag: number;
   readonly value: Buffer;
 }
+
+const PREPARE_STATEMENT_INFO_ITEMS = Buffer.from([
+  isc_info_sql_stmt_type,
+  isc_info_sql_select,
+  isc_info_sql_describe_vars,
+  isc_info_sql_sqlda_seq,
+  isc_info_sql_type,
+  isc_info_sql_sub_type,
+  isc_info_sql_scale,
+  isc_info_sql_length,
+  isc_info_sql_field,
+  isc_info_sql_alias,
+  isc_info_sql_relation,
+  isc_info_sql_relation_alias,
+  isc_info_sql_owner,
+  isc_info_sql_describe_end,
+  isc_info_sql_bind,
+  isc_info_sql_describe_vars,
+  isc_info_sql_sqlda_seq,
+  isc_info_sql_type,
+  isc_info_sql_sub_type,
+  isc_info_sql_scale,
+  isc_info_sql_length,
+  isc_info_sql_describe_end,
+]);
+const PREPARE_STATEMENT_INFO_BUFFER_LENGTH = 32767;
 
 export class WireProtocol {
   private socket?: Socket;
@@ -209,6 +257,75 @@ export class WireProtocol {
     await this.finishTransaction(op_rollback_retaining, transaction, 'rollback retaining');
   }
 
+  async allocateStatement(): Promise<StatementHandle> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error('A database must be attached before allocating a statement.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_allocate_statement);
+    writer.writeInt32(this.attachmentHandle);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while allocating a statement.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird allocate statement failed');
+    return { handle: response.handle };
+  }
+
+  async prepareStatement(
+    transaction: TransactionHandle,
+    statement: StatementHandle,
+    sql: string,
+    sqlDialect = 3,
+  ): Promise<void> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error('A database must be attached before preparing a statement.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_prepare_statement);
+    writer.writeInt32(transaction.handle);
+    writer.writeInt32(statement.handle);
+    writer.writeInt32(sqlDialect);
+    writer.writeString(sql);
+    writer.writeBuffer(PREPARE_STATEMENT_INFO_ITEMS);
+    writer.writeInt32(PREPARE_STATEMENT_INFO_BUFFER_LENGTH);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while preparing a statement.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird prepare statement failed');
+  }
+
+  async freeStatement(statement: StatementHandle): Promise<void> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error('A database must be attached before freeing a statement.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_free_statement);
+    writer.writeInt32(statement.handle);
+    writer.writeInt32(DSQL_drop);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while freeing a statement.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird free statement failed');
+  }
+
   async close(): Promise<void> {
     if (this.channel) {
       const writer = new XdrWriter();
@@ -298,8 +415,9 @@ export class WireProtocol {
     for (const protocolVersion of SUPPORTED_PROTOCOLS) {
       writer.writeInt32(protocolVersion);
       writer.writeInt32(arch_generic);
+      writer.writeInt32(0);
       writer.writeInt32(ptype_batch_send);
-      writer.writeInt32(ptype_lazy_send);
+      // FIXME: ptype_lazy_send
       writer.writeInt32(weight--);
     }
 
@@ -615,7 +733,9 @@ export class WireProtocol {
       if (tag === 2 || tag === 3 || tag === 5) {
         const length = valueChunk.readInt32BE(0);
         if (length > 0) {
-          chunks.push(await this.channel!.readExactly(length));
+          const paddedLength = length + ((4 - (length % 4)) & 3);
+          const valueBuffer = await this.channel!.readExactly(paddedLength);
+          chunks.push(valueBuffer.subarray(0, length));
         }
       }
     }
