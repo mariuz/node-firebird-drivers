@@ -62,10 +62,12 @@ import {
   op_accept_data,
   op_allocate_statement,
   op_attach,
+  op_cancel_blob,
   op_commit,
   op_commit_retaining,
   op_cond_accept,
   op_connect,
+  op_create_blob2,
   op_cont_auth,
   op_create,
   op_detach,
@@ -76,12 +78,17 @@ import {
   op_fetch,
   op_fetch_response,
   op_free_statement,
+  op_get_segment,
+  op_close_blob,
+  op_open_blob2,
   op_ping,
+  op_put_segment,
   op_prepare_statement,
   op_reject,
   op_response,
   op_rollback,
   op_rollback_retaining,
+  op_seek_blob,
   op_transaction,
   ptype_batch_send,
   SQL_BLOB,
@@ -122,6 +129,16 @@ export interface StatementHandle {
   readonly handle: number;
 }
 
+export interface BlobHandle {
+  readonly handle: number;
+  readonly id: Buffer;
+}
+
+export interface BlobSegmentResponse {
+  readonly state: number;
+  readonly data: Buffer;
+}
+
 export interface StatementColumn {
   readonly alias: string;
   readonly field: string;
@@ -149,6 +166,7 @@ interface AcceptMessage {
 interface ResponseMessage {
   readonly handle: number;
   readonly objectId: bigint;
+  readonly quad: Buffer;
   readonly data: Buffer;
   readonly status: ReturnType<typeof parseStatusVector>;
 }
@@ -338,6 +356,94 @@ export class WireProtocol {
 
   async rollbackRetaining(transaction: TransactionHandle): Promise<void> {
     await this.finishTransaction(op_rollback_retaining, transaction, 'rollback retaining');
+  }
+
+  async createBlob(transaction: TransactionHandle, bpb: Uint8Array = Buffer.alloc(0)): Promise<BlobHandle> {
+    return await this.openOrCreateBlob(op_create_blob2, transaction, Buffer.alloc(8), bpb, 'create blob');
+  }
+
+  async openBlob(
+    transaction: TransactionHandle,
+    blobId: Uint8Array,
+    bpb: Uint8Array = Buffer.alloc(0),
+  ): Promise<BlobHandle> {
+    return await this.openOrCreateBlob(op_open_blob2, transaction, blobId, bpb, 'open blob');
+  }
+
+  async getSegment(blob: BlobHandle, bufferLength: number): Promise<BlobSegmentResponse> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error('A database must be attached before reading a blob segment.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_get_segment);
+    writer.writeInt32(blob.handle);
+    writer.writeInt32(bufferLength);
+    writer.writeBuffer(Buffer.alloc(0));
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while getting a blob segment.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird get blob segment failed');
+    return {
+      state: response.handle,
+      data: response.data,
+    };
+  }
+
+  async putSegment(blob: BlobHandle, segment: Buffer): Promise<void> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error('A database must be attached before writing a blob segment.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_put_segment);
+    writer.writeInt32(blob.handle);
+    writer.writeInt32(segment.length);
+    writer.writeBuffer(segment);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while putting a blob segment.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird put blob segment failed');
+  }
+
+  async seekBlob(blob: BlobHandle, mode: number, offset: number): Promise<number> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error('A database must be attached before seeking a blob.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_seek_blob);
+    writer.writeInt32(blob.handle);
+    writer.writeInt32(mode);
+    writer.writeInt32(offset);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while seeking a blob.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird seek blob failed');
+    return response.quad.readInt32BE(4);
+  }
+
+  async closeBlob(blob: BlobHandle): Promise<void> {
+    await this.finishBlob(op_close_blob, blob, 'close blob');
+  }
+
+  async cancelBlob(blob: BlobHandle): Promise<void> {
+    await this.finishBlob(op_cancel_blob, blob, 'cancel blob');
   }
 
   async allocateStatement(): Promise<StatementHandle> {
@@ -565,6 +671,60 @@ export class WireProtocol {
     const operation = await this.readOperation();
     if (operation !== op_response) {
       throw new Error(`Unexpected operation ${operation} while executing transaction ${actionName}.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, `Firebird ${actionName} failed`);
+  }
+
+  private async openOrCreateBlob(
+    operationCode: number,
+    transaction: TransactionHandle,
+    blobId: Uint8Array,
+    bpb: Uint8Array,
+    actionName: string,
+  ): Promise<BlobHandle> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error(`A database must be attached before ${actionName}.`);
+    }
+
+    if (blobId.length !== 8) {
+      throw new Error('Blob id must contain exactly 8 bytes.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(operationCode);
+    writer.writeBuffer(Buffer.from(bpb));
+    writer.writeInt32(transaction.handle);
+    writer.writeBytes(Buffer.from(blobId));
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while executing ${actionName}.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, `Firebird ${actionName} failed`);
+    return {
+      handle: response.handle,
+      id: Buffer.from(response.quad),
+    };
+  }
+
+  private async finishBlob(operationCode: number, blob: BlobHandle, actionName: string): Promise<void> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error(`A database must be attached before ${actionName}.`);
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(operationCode);
+    writer.writeInt32(blob.handle);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while executing ${actionName}.`);
     }
 
     const response = await this.readResponse();
@@ -881,10 +1041,11 @@ export class WireProtocol {
 
   private async readResponse(): Promise<ResponseMessage> {
     const handle = (await this.channel!.readExactly(4)).readInt32BE(0);
-    const objectId = (await this.channel!.readExactly(8)).readBigInt64BE(0);
+    const quad = await this.channel!.readExactly(8);
+    const objectId = quad.readBigInt64BE(0);
     const data = await this.readXdrBuffer();
     const status = parseStatusVector(await this.readStatusVectorBuffer());
-    return { handle, objectId, data, status };
+    return { handle, objectId, quad, data, status };
   }
 
   private async readXdrBuffer(): Promise<Buffer> {

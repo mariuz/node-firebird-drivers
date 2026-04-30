@@ -3,7 +3,7 @@ import {
   getDriverTestDatabasePath,
   loadDriverTestConfig,
 } from '../../../node-firebird-driver/src/test/test-config';
-import { tpb } from '../../../node-firebird-driver/src/lib/impl/fb-util';
+import { createBpb, tpb } from '../../../node-firebird-driver/src/lib/impl/fb-util';
 import {
   isc_dpb_lc_ctype,
   isc_dpb_overwrite,
@@ -50,6 +50,29 @@ describe('node-firebird-driver-wire', () => {
 
   function createTpb(): Buffer {
     return Buffer.from([tpb.version1, tpb.concurrency, tpb.wait, tpb.write]);
+  }
+
+  function decodePackedBlobSegments(buffer: Buffer): Buffer[] {
+    const segments: Buffer[] = [];
+    let offset = 0;
+
+    while (offset + 2 <= buffer.length) {
+      const length = buffer.readUInt16LE(offset);
+      offset += 2;
+
+      if (offset + length > buffer.length) {
+        throw new Error('Invalid packed blob segment buffer.');
+      }
+
+      segments.push(Buffer.from(buffer.subarray(offset, offset + length)));
+      offset += length;
+    }
+
+    if (offset !== buffer.length) {
+      throw new Error('Packed blob segment buffer has trailing bytes.');
+    }
+
+    return segments;
   }
 
   function createProtocol(password = validPassword): WireProtocol {
@@ -274,6 +297,70 @@ describe('node-firebird-driver-wire', () => {
           await wireProtocol.freeStatement(ddlStatement);
         }
 
+        await wireProtocol.rollback(transaction);
+        await wireProtocol.detach(attachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
+  test('creates, writes, opens and reads blob segments', async () => {
+    await withCreatedDatabase('wire-blob-segments.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const attachment = await wireProtocol.attach(database, createAttachDpb());
+        const transaction = await wireProtocol.startTransaction(createTpb());
+
+        const createdBlob = await wireProtocol.createBlob(transaction, createBpb({ type: 'SEGMENTED' }));
+        expect(createdBlob.handle).toBeGreaterThanOrEqual(0);
+        expect(createdBlob.id).toHaveLength(8);
+
+        await wireProtocol.putSegment(createdBlob, Buffer.from('abc', 'ascii'));
+        await wireProtocol.putSegment(createdBlob, Buffer.from('de', 'ascii'));
+        await wireProtocol.closeBlob(createdBlob);
+
+        const openedBlob = await wireProtocol.openBlob(transaction, createdBlob.id, createBpb({ type: 'SEGMENTED' }));
+        expect(openedBlob.handle).toBeGreaterThanOrEqual(0);
+
+        const response = await wireProtocol.getSegment(openedBlob, 64);
+        expect(response.state).toBe(2);
+        expect(decodePackedBlobSegments(response.data).map((segment) => segment.toString('ascii'))).toStrictEqual([
+          'abc',
+          'de',
+        ]);
+
+        await wireProtocol.closeBlob(openedBlob);
+        await wireProtocol.rollback(transaction);
+        await wireProtocol.detach(attachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
+  test('seeks a stream blob and can cancel an open blob handle', async () => {
+    await withCreatedDatabase('wire-blob-seek.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const attachment = await wireProtocol.attach(database, createAttachDpb());
+        const transaction = await wireProtocol.startTransaction(createTpb());
+
+        const createdBlob = await wireProtocol.createBlob(transaction, createBpb({ type: 'STREAM' }));
+        await wireProtocol.putSegment(createdBlob, Buffer.from('1234567890', 'ascii'));
+        await wireProtocol.closeBlob(createdBlob);
+
+        const openedBlob = await wireProtocol.openBlob(transaction, createdBlob.id, createBpb({ type: 'STREAM' }));
+        expect(await wireProtocol.seekBlob(openedBlob, 0, 2)).toBe(2);
+
+        const response = await wireProtocol.getSegment(openedBlob, 32);
+        expect(decodePackedBlobSegments(response.data).map((segment) => segment.toString('ascii'))).toStrictEqual([
+          '34567890',
+        ]);
+
+        await wireProtocol.cancelBlob(openedBlob);
         await wireProtocol.rollback(transaction);
         await wireProtocol.detach(attachment);
       } finally {
