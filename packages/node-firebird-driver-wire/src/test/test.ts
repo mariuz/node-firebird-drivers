@@ -131,6 +131,51 @@ describe('node-firebird-driver-wire', () => {
     });
   });
 
+  test('commits and rolls back transactions', async () => {
+    await withCreatedDatabase('wire-commit-rollback-transaction.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const attachment = await wireProtocol.attach(database, createAttachDpb());
+        const transaction1 = await wireProtocol.startTransaction(createTpb());
+        expect(transaction1.handle).toBeGreaterThanOrEqual(0);
+        await wireProtocol.commit(transaction1);
+
+        const transaction2 = await wireProtocol.startTransaction(createTpb());
+        expect(transaction2.handle).toBeGreaterThanOrEqual(0);
+        await wireProtocol.rollback(transaction2);
+
+        await wireProtocol.detach(attachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
+  test('commits and rolls back retaining transactions', async () => {
+    await withCreatedDatabase('wire-retaining-transaction.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const attachment = await wireProtocol.attach(database, createAttachDpb());
+
+        const transaction1 = await wireProtocol.startTransaction(createTpb());
+        expect(transaction1.handle).toBeGreaterThanOrEqual(0);
+        await wireProtocol.commitRetaining(transaction1);
+        await wireProtocol.rollback(transaction1);
+
+        const transaction2 = await wireProtocol.startTransaction(createTpb());
+        expect(transaction2.handle).toBeGreaterThanOrEqual(0);
+        await wireProtocol.rollbackRetaining(transaction2);
+        await wireProtocol.commit(transaction2);
+
+        await wireProtocol.detach(attachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
   test('returns a structured Firebird error for a bad password', async () => {
     await withCreatedDatabase('wire-bad-password.fdb', async (database) => {
       const wireProtocol = createProtocol('wrong-password');

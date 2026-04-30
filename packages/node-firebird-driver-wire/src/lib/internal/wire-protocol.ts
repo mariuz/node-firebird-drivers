@@ -25,6 +25,8 @@ import {
   op_accept_data,
   op_attach,
   op_cond_accept,
+  op_commit,
+  op_commit_retaining,
   op_connect,
   op_cont_auth,
   op_create,
@@ -35,6 +37,8 @@ import {
   op_ping,
   op_reject,
   op_response,
+  op_rollback,
+  op_rollback_retaining,
   op_transaction,
   ptype_batch_send,
   ptype_lazy_send,
@@ -189,6 +193,22 @@ export class WireProtocol {
     return { handle: response.handle };
   }
 
+  async commit(transaction: TransactionHandle): Promise<void> {
+    await this.finishTransaction(op_commit, transaction, 'commit');
+  }
+
+  async rollback(transaction: TransactionHandle): Promise<void> {
+    await this.finishTransaction(op_rollback, transaction, 'rollback');
+  }
+
+  async commitRetaining(transaction: TransactionHandle): Promise<void> {
+    await this.finishTransaction(op_commit_retaining, transaction, 'commit retaining');
+  }
+
+  async rollbackRetaining(transaction: TransactionHandle): Promise<void> {
+    await this.finishTransaction(op_rollback_retaining, transaction, 'rollback retaining');
+  }
+
   async close(): Promise<void> {
     if (this.channel) {
       const writer = new XdrWriter();
@@ -227,6 +247,29 @@ export class WireProtocol {
 
     this.socket = socket;
     this.channel = new SocketChannel(socket);
+  }
+
+  private async finishTransaction(
+    operationCode: number,
+    transaction: TransactionHandle,
+    actionName: string,
+  ): Promise<void> {
+    if (!this.channel || this.attachmentHandle == undefined) {
+      throw new Error(`A database must be attached before ${actionName}.`);
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(operationCode);
+    writer.writeInt32(transaction.handle);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while executing transaction ${actionName}.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, `Firebird ${actionName} failed`);
   }
 
   private async writeConnect(database: string): Promise<void> {
