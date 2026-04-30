@@ -64,6 +64,20 @@ describe('node-firebird-driver-wire', () => {
     });
   });
 
+  test('pings a real Firebird database connection', async () => {
+    await withCreatedDatabase('wire-ping.fdb', async (database) => {
+      const wireProtocol = createProtocol();
+
+      try {
+        const wireAttachment = await wireProtocol.attach(database);
+        await expect(wireProtocol.ping()).resolves.toBeUndefined();
+        await wireProtocol.detach(wireAttachment);
+      } finally {
+        await wireProtocol.close();
+      }
+    });
+  });
+
   test('returns a structured Firebird error for a bad password', async () => {
     await withCreatedDatabase('wire-bad-password.fdb', async (database) => {
       const wireProtocol = createProtocol('wrong-password');

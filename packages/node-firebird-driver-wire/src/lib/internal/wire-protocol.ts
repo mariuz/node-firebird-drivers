@@ -37,6 +37,7 @@ import {
   op_disconnect,
   op_drop_database,
   op_dummy,
+  op_ping,
   op_reject,
   op_response,
   ptype_batch_send,
@@ -154,6 +155,24 @@ export class WireProtocol {
     const response = await this.readResponse();
     assertSuccessfulResponse(response.status, 'Firebird drop database failed');
     this.attachmentHandle = undefined;
+  }
+
+  async ping(): Promise<void> {
+    if (!this.channel) {
+      throw new Error('Wire protocol socket is not open.');
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_ping);
+    await this.channel.write(writer.toBuffer());
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while pinging.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird ping failed');
   }
 
   async close(): Promise<void> {
