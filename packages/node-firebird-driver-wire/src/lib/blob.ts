@@ -138,6 +138,7 @@ export class BlobStreamImpl extends AbstractBlobStream {
     while (buffer.length > 0) {
       const writingBytes = Math.min(buffer.length, MAX_SEGMENT_SIZE);
       await this.attachment.protocol!.putSegment(this.blobHandle!, buffer.subarray(0, writingBytes));
+      this.position += writingBytes;
       buffer = buffer.subarray(writingBytes);
     }
   }

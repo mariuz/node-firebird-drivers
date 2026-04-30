@@ -1167,7 +1167,7 @@ export function runCommonTests(client: Client) {
         const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'BlobStream-seek.fdb'));
         const transaction = await attachment.startTransaction();
 
-        await attachment.execute(transaction, 'create table t1 (b blob)');
+        await attachment.execute(transaction, 'create table t1 (id integer, b blob)');
         await transaction.commitRetaining();
 
         const blobStream = await attachment.createBlob(transaction, {
@@ -1175,9 +1175,9 @@ export function runCommonTests(client: Client) {
         });
         await blobStream.write(Buffer.alloc(10, '1234567890'));
         await blobStream.close();
-        await attachment.execute(transaction, 'insert into t1 (b) values (?)', [blobStream.blob]);
+        await attachment.execute(transaction, 'insert into t1 (id, b) values (?, ?)', [1, blobStream.blob]);
 
-        const blob = (await attachment.executeSingleton(transaction, 'select b from t1'))[0] as Blob;
+        const blob = (await attachment.executeSingleton(transaction, 'select b from t1 where id = 1'))[0] as Blob;
         const readBlobStream = await attachment.openBlob(transaction, blob);
 
         const buffer = Buffer.alloc(3);
@@ -1197,6 +1197,13 @@ export function runCommonTests(client: Client) {
         expect(await readBlobStream.seek(-2, BlobSeekWhence.END)).toBe(8);
         expect(await readBlobStream.read(buffer)).toBe(2);
         expect(buffer.slice(0, 2).toString()).toBe('90');
+
+        const writeBlobStream = await attachment.createBlob(transaction, {
+          type: 'STREAM',
+        });
+        await writeBlobStream.write(Buffer.from('12345'));
+        expect(await writeBlobStream.seek(-1, BlobSeekWhence.CURRENT)).toBe(4);
+        await writeBlobStream.close();
 
         await transaction.commit();
         await attachment.dropDatabase();
