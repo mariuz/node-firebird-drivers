@@ -1,6 +1,10 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build:
@@ -102,3 +106,9 @@ jobs:
         with:
           name: driver-native-${{ matrix.os }}-${{ matrix.node-version }}
           path: packages/node-firebird-driver-native
+
+      - name: Upload driver-wire-${{ matrix.os }}-${{ matrix.node-version }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: driver-wire-${{ matrix.os }}-${{ matrix.node-version }}
+          path: packages/node-firebird-driver-wire
