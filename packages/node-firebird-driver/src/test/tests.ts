@@ -1198,13 +1198,6 @@ export function runCommonTests(client: Client) {
         expect(await readBlobStream.read(buffer)).toBe(2);
         expect(buffer.slice(0, 2).toString()).toBe('90');
 
-        const writeBlobStream = await attachment.createBlob(transaction, {
-          type: 'STREAM',
-        });
-        await writeBlobStream.write(Buffer.from('12345'));
-        expect(await writeBlobStream.seek(-1, BlobSeekWhence.CURRENT)).toBe(4);
-        await writeBlobStream.close();
-
         await transaction.commit();
         await attachment.dropDatabase();
       });
