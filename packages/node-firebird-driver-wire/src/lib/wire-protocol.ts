@@ -371,7 +371,10 @@ export class WireProtocol {
 
       const response = await this.readResponse();
       assertSuccessfulResponse(response.status, 'Firebird get blob segment failed');
-      this.blobPositions.set(blob.handle, (this.blobPositions.get(blob.handle) ?? 0) + this.getPackedBlobLength(response.data));
+      this.blobPositions.set(
+        blob.handle,
+        (this.blobPositions.get(blob.handle) ?? 0) + this.getPackedBlobLength(response.data),
+      );
       return {
         state: response.handle,
         data: response.data,
@@ -1776,7 +1779,8 @@ export class WireProtocol {
   }
 
   private noteAcceptedProtocol(accept: AcceptMessage): void {
-    this.acceptedProtocolVersion = accept.protocolVersion < 0 ? accept.protocolVersion & 0xffff : accept.protocolVersion;
+    this.acceptedProtocolVersion =
+      accept.protocolVersion < 0 ? accept.protocolVersion & 0xffff : accept.protocolVersion;
     this.acceptedPacketType = accept.packetType & 0xff;
   }
 

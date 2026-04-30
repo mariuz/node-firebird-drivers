@@ -1,5 +1,5 @@
-import { errorMessagesByCode } from './error-messages';
 import { statusArgument } from './constants';
+import { errorMessagesByCode } from './error-messages';
 
 const {
   cstring: isc_arg_cstring,
