@@ -10,6 +10,7 @@ export interface ClientAuthPlugin {
   readonly name: AuthPluginName;
   readonly initialData: Buffer;
   continueAuthentication(username: string, password: string, serverData: Buffer): Buffer;
+  getSessionKey(): Buffer | undefined;
 }
 
 class LegacyAuthPlugin implements ClientAuthPlugin {
@@ -26,6 +27,10 @@ class LegacyAuthPlugin implements ClientAuthPlugin {
 
   continueAuthentication(): Buffer {
     return Buffer.alloc(0);
+  }
+
+  getSessionKey(): Buffer | undefined {
+    return undefined;
   }
 }
 
@@ -45,6 +50,10 @@ class SrpAuthPlugin implements ClientAuthPlugin {
 
   continueAuthentication(username: string, password: string, serverData: Buffer): Buffer {
     return this.session.createClientProof(username, password, serverData);
+  }
+
+  getSessionKey(): Buffer | undefined {
+    return this.session.getSessionKey();
   }
 }
 

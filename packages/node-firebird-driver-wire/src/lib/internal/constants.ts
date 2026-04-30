@@ -59,6 +59,7 @@ export namespace wireOp {
   export const contAuth = 92;
   export const ping = 93;
   export const acceptData = 94;
+  export const crypt = 96;
   export const condAccept = 98;
 }
 

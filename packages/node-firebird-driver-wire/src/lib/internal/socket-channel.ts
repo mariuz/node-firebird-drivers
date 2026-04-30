@@ -4,6 +4,8 @@ export class SocketChannel {
   private readonly buffers: Buffer[] = [];
   private bufferedLength = 0;
   private ended = false;
+  private incomingTransform?: ((chunk: Buffer) => Buffer) | undefined;
+  private outgoingTransform?: ((chunk: Buffer) => Buffer) | undefined;
   private pendingRead?:
     | {
         length: number;
@@ -14,8 +16,9 @@ export class SocketChannel {
 
   constructor(private readonly socket: Socket) {
     socket.on('data', (chunk: Buffer) => {
-      this.buffers.push(chunk);
-      this.bufferedLength += chunk.length;
+      const data = this.incomingTransform ? this.incomingTransform(chunk) : chunk;
+      this.buffers.push(data);
+      this.bufferedLength += data.length;
       this.flushPendingRead();
     });
     socket.on('end', () => {
@@ -47,8 +50,10 @@ export class SocketChannel {
   }
 
   async write(buffer: Buffer): Promise<void> {
+    const data = this.outgoingTransform ? this.outgoingTransform(buffer) : buffer;
+
     await new Promise<void>((resolve, reject) => {
-      this.socket.write(buffer, (error) => {
+      this.socket.write(data, (error) => {
         if (error) {
           reject(error);
         } else {
@@ -56,6 +61,18 @@ export class SocketChannel {
         }
       });
     });
+  }
+
+  setTransforms(transforms: {
+    incoming?: ((chunk: Buffer) => Buffer) | undefined;
+    outgoing?: ((chunk: Buffer) => Buffer) | undefined;
+  }): void {
+    if (this.bufferedLength !== 0 || this.pendingRead) {
+      throw new Error('Cannot switch socket transforms while buffered data is pending.');
+    }
+
+    this.incomingTransform = transforms.incoming;
+    this.outgoingTransform = transforms.outgoing;
   }
 
   private flushPendingRead(): void {

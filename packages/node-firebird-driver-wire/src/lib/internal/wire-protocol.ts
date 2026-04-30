@@ -19,6 +19,7 @@ import {
 } from './constants';
 import { SocketChannel } from './socket-channel';
 import { assertSuccessfulResponse, parseStatusVector } from './status';
+import { createWireCryptSession } from './wire-crypt';
 import { writeTraditionalClumplet, writeWideClumplet, writeWideStringClumplet, XdrWriter } from './xdr';
 
 const { list: AUTH_PLUGINS } = authPlugin;
@@ -79,6 +80,7 @@ const {
   condAccept: op_cond_accept,
   connect: op_connect,
   connectRequest: op_connect_request,
+  crypt: op_crypt,
   contAuth: op_cont_auth,
   create: op_create,
   createBlob2: op_create_blob2,
@@ -181,6 +183,7 @@ interface AcceptMessage {
   readonly authenticated: boolean;
   readonly pluginName: string;
   readonly data: Buffer;
+  readonly keys: Buffer;
 }
 
 interface ResponseMessage {
@@ -277,6 +280,8 @@ export class WireProtocol {
   private currentPluginName: AuthPluginName = 'Legacy_Auth';
   private currentPlugin?: ClientAuthPlugin;
   private clientAuthListSent = false;
+  private wireCryptEnabled = false;
+  private readonly pendingServerKeys: Buffer[] = [];
   private readonly statementMetadata = new Map<number, StatementMetadata>();
   private readonly exhaustedCursors = new Set<number>();
   private readonly eventSubscriptions = new Map<number, EventSubscription>();
@@ -874,6 +879,8 @@ export class WireProtocol {
     this.channel = undefined;
     this.socket = undefined;
     this.attachmentHandle = undefined;
+    this.wireCryptEnabled = false;
+    this.pendingServerKeys.length = 0;
     this.eventSubscriptions.clear();
   }
 
@@ -1188,6 +1195,7 @@ export class WireProtocol {
     this.currentPluginName = AUTH_PLUGINS[0];
     this.currentPlugin = createAuthPlugin(this.currentPluginName, this.options.password);
     this.clientAuthListSent = false;
+    this.pendingServerKeys.length = 0;
 
     await this.writeConnect(database);
 
@@ -1200,6 +1208,7 @@ export class WireProtocol {
 
       if (operation === op_accept_data || operation === op_cond_accept) {
         const accept = await this.readAcceptMessage();
+        this.recordServerKeys(accept.keys);
         const attachAuthData = accept.authenticated ? undefined : this.processAcceptPlugin(accept);
 
         if (operation === op_cond_accept && !accept.authenticated) {
@@ -1207,11 +1216,16 @@ export class WireProtocol {
           continue;
         }
 
+        if (accept.authenticated) {
+          await this.enableWireCryptIfAvailable();
+        }
+
         return attachAuthData;
       }
 
       if (operation === op_cont_auth) {
         const authData = await this.readContinueAuthenticationMessage();
+        this.recordServerKeys(authData.keys);
         const response = this.processAcceptPlugin(authData);
         await this.writeContinueAuthentication(response);
         continue;
@@ -1220,6 +1234,8 @@ export class WireProtocol {
       if (operation === op_response) {
         const response = await this.readResponse();
         assertSuccessfulResponse(response.status, 'Firebird connect failed');
+        this.recordServerKeys(response.data);
+        await this.enableWireCryptIfAvailable();
         return undefined;
       }
 
@@ -1245,6 +1261,7 @@ export class WireProtocol {
       const responseOperation = await this.readOperation();
       if (responseOperation === op_cont_auth) {
         const authData = await this.readContinueAuthenticationMessage();
+        this.recordServerKeys(authData.keys);
         const response = this.processAcceptPlugin(authData);
         await this.writeContinueAuthentication(response);
         continue;
@@ -1253,6 +1270,8 @@ export class WireProtocol {
       if (responseOperation === op_response) {
         const response = await this.readResponse();
         assertSuccessfulResponse(response.status, `Firebird ${actionName} failed`);
+        this.recordServerKeys(response.data);
+        await this.enableWireCryptIfAvailable();
         this.attachmentHandle = response.handle;
         return { handle: response.handle };
       }
@@ -1296,6 +1315,49 @@ export class WireProtocol {
     writer.writeBuffer(Buffer.alloc(0));
     await this.channel!.write(writer.toBuffer());
     this.clientAuthListSent = true;
+  }
+
+  private recordServerKeys(keys: Buffer): void {
+    if (keys.length > 0) {
+      this.pendingServerKeys.push(Buffer.from(keys));
+    }
+  }
+
+  private async enableWireCryptIfAvailable(): Promise<void> {
+    if (this.wireCryptEnabled || !this.channel || !this.currentPlugin) {
+      return;
+    }
+
+    const sessionKey = this.currentPlugin.getSessionKey();
+    if (!sessionKey || this.pendingServerKeys.length === 0) {
+      return;
+    }
+
+    const session = createWireCryptSession(this.pendingServerKeys, sessionKey);
+    if (!session) {
+      return;
+    }
+
+    const writer = new XdrWriter();
+    writer.writeInt32(op_crypt);
+    writer.writeString(session.pluginName);
+    writer.writeString(session.keyType);
+    await this.channel.write(writer.toBuffer());
+
+    this.channel.setTransforms({
+      incoming: (buffer) => session.incoming.transform(buffer),
+      outgoing: (buffer) => session.outgoing.transform(buffer),
+    });
+
+    const operation = await this.readOperation();
+    if (operation !== op_response) {
+      throw new Error(`Unexpected operation ${operation} while enabling wire encryption.`);
+    }
+
+    const response = await this.readResponse();
+    assertSuccessfulResponse(response.status, 'Firebird wire encryption setup failed');
+    this.pendingServerKeys.length = 0;
+    this.wireCryptEnabled = true;
   }
 
   private buildRemainingPluginList(currentPluginName: AuthPluginName): string {
@@ -1581,16 +1643,16 @@ export class WireProtocol {
     const data = await this.readXdrBuffer();
     const pluginName = await this.readXdrString();
     const authenticated = (await this.channel!.readExactly(4)).readInt32BE(0) === 1;
-    await this.readXdrBuffer();
-    return { authenticated, pluginName, data };
+    const keys = await this.readXdrBuffer();
+    return { authenticated, pluginName, data, keys };
   }
 
   private async readContinueAuthenticationMessage(): Promise<AcceptMessage> {
     const data = await this.readXdrBuffer();
     const pluginName = await this.readXdrString();
     await this.readXdrString();
-    await this.readXdrBuffer();
-    return { authenticated: false, pluginName, data };
+    const keys = await this.readXdrBuffer();
+    return { authenticated: false, pluginName, data, keys };
   }
 
   private async readResponse(): Promise<ResponseMessage> {
