@@ -16,8 +16,15 @@ function decodePackedBlobSegments(buffer: Buffer): Buffer[] {
   while (offset + 2 <= buffer.length) {
     const length = buffer.readUInt16LE(offset);
     offset += 2;
+    if (offset + length > buffer.length) {
+      throw new Error('Invalid packed blob segment buffer.');
+    }
     segments.push(Buffer.from(buffer.subarray(offset, offset + length)));
     offset += length;
+  }
+
+  if (offset !== buffer.length) {
+    throw new Error('Packed blob segment buffer has trailing bytes.');
   }
 
   return segments;
@@ -77,20 +84,32 @@ export class BlobStreamImpl extends AbstractBlobStream {
   }
 
   protected async internalRead(buffer: Buffer): Promise<number> {
-    if (this.readBuffer.length === 0) {
-      if (this.eofReached) {
-        return -1;
+    while (this.readBuffer.length < buffer.length && !this.eofPending && !this.eofReached) {
+      const response = await this.attachment.protocol!.getSegment(this.blobHandle!, MAX_SEGMENT_SIZE);
+      const segmentData = Buffer.concat(decodePackedBlobSegments(response.data));
+
+      if (segmentData.length > 0) {
+        this.readBuffer = this.readBuffer.length === 0 ? segmentData : Buffer.concat([this.readBuffer, segmentData]);
       }
 
-      const response = await this.attachment.protocol!.getSegment(
-        this.blobHandle!,
-        Math.min(buffer.length, MAX_SEGMENT_SIZE),
-      );
-      this.readBuffer = Buffer.concat(decodePackedBlobSegments(response.data));
-      this.eofPending = response.state === 2;
+      if (response.state === 2) {
+        this.eofPending = true;
+      }
 
-      if (this.readBuffer.length === 0) {
+      if (segmentData.length === 0) {
         this.eofReached = true;
+        this.eofPending = false;
+        break;
+      }
+    }
+
+    if (this.readBuffer.length === 0) {
+      if (this.eofPending) {
+        this.eofReached = true;
+        this.eofPending = false;
+      }
+
+      if (this.eofReached) {
         return -1;
       }
     }
