@@ -323,13 +323,25 @@ function describeColumnType(column: StatementColumn): { blr: number[]; alignment
   switch (column.type) {
     case sqlTypes.SQL_TEXT:
       return {
-        blr: [blr.text, column.length & 0xff, (column.length >> 8) & 0xff],
+        blr: [
+          blr.text2,
+          column.charSet & 0xff,
+          (column.charSet >> 8) & 0xff,
+          column.length & 0xff,
+          (column.length >> 8) & 0xff,
+        ],
         alignment: 1,
         length: column.length,
       };
     case sqlTypes.SQL_VARYING:
       return {
-        blr: [blr.varying, column.length & 0xff, (column.length >> 8) & 0xff],
+        blr: [
+          blr.varying2,
+          column.charSet & 0xff,
+          (column.charSet >> 8) & 0xff,
+          column.length & 0xff,
+          (column.length >> 8) & 0xff,
+        ],
         alignment: 2,
         length: column.length + 2,
       };

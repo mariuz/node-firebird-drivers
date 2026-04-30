@@ -105,11 +105,13 @@ export namespace dsql {
 
 export namespace blr {
   export const text = 14;
+  export const text2 = 15;
   export const short = 7;
   export const long = 8;
   export const double = 27;
   export const timestamp = 35;
   export const varying = 37;
+  export const varying2 = 38;
   export const sqlDate = 12;
   export const sqlTime = 13;
   export const sqlTimeTz = 28;
