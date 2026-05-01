@@ -10,12 +10,18 @@ import {
 } from '../lib';
 
 import * as fs from 'fs-extra-promise';
-import * as tmp from 'temp-fs';
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-require('dotenv').config({ path: '../../.env', quiet: true });
+import { ensureDriverTestTmpDir, getDriverTestDatabaseUri, loadDriverTestConfig } from './test-config';
 
 export function runCommonTests(client: Client) {
+  async function getServerMajorVersion(attachment: any, transaction: any): Promise<number> {
+    const [engineVersion] = await attachment.executeSingleton(
+      transaction,
+      "select rdb$get_context('SYSTEM', 'ENGINE_VERSION') from rdb$database",
+    );
+
+    return parseInt(String(engineVersion), 10);
+  }
+
   function dateToString(d: Date) {
     return d && `${(d.getFullYear() + '').padStart(4, '0')}-${d.getMonth() + 1}-${d.getDate()}`;
   }
@@ -52,39 +58,15 @@ export function runCommonTests(client: Client) {
   }
 
   describe('node-firebird-driver', () => {
-    const testConfig = {
-      username: process.env.ISC_USER,
-      password: process.env.ISC_PASSWORD,
-      host: process.env.NODE_FB_TEST_HOST,
-      port: process.env.NODE_FB_TEST_PORT,
-      tmpDir: process.env.NODE_FB_TEST_TMP_DIR,
-    };
-
-    function isLocal(): boolean {
-      return testConfig.host == undefined || testConfig.host == 'localhost' || testConfig.host == '127.0.0.1';
-    }
-
-    function getTempFile(name: string): string {
-      const database = `${testConfig.tmpDir}/${name}`;
-      return (
-        (testConfig.host ?? '') +
-        (testConfig.host && testConfig.port ? `/${testConfig.port}` : '') +
-        (testConfig.host ? ':' : '') +
-        database
-      );
-    }
+    const testConfig = loadDriverTestConfig();
+    let createdTmpDir = false;
 
     jest.setTimeout(10000);
 
     beforeAll(() => {
       expect(client.isValid).toBeTruthy();
 
-      if (isLocal() && !testConfig.tmpDir) {
-        testConfig.tmpDir = tmp.mkdirSync().path.toString();
-
-        // Important for MacOS tests with non-embedded server.
-        fs.chmodSync(testConfig.tmpDir, 0o777);
-      }
+      createdTmpDir = ensureDriverTestTmpDir(testConfig).createdTmpDir;
 
       const defaultOptions = {
         password: testConfig.password,
@@ -106,19 +88,21 @@ export function runCommonTests(client: Client) {
 
       expect(client.isValid).toBeFalsy();
 
-      if (isLocal() && !testConfig.tmpDir) {
+      if (createdTmpDir) {
         fs.rmdirSync(testConfig.tmpDir!);
       }
     });
 
     describe('Client', () => {
       test('#createDatabase()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Client-createDatabase.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Client-createDatabase.fdb'),
+        );
         await attachment.dropDatabase();
       });
 
       test('#connect()', async () => {
-        const filename = getTempFile('Client-connect.fdb');
+        const filename = getDriverTestDatabaseUri(testConfig, 'Client-connect.fdb');
         const attachment1 = await client.createDatabase(filename);
         const attachment2 = await client.connect(filename);
 
@@ -133,7 +117,7 @@ export function runCommonTests(client: Client) {
       });
 
       test('setDatabaseReadWriteMode', async () => {
-        const filename = getTempFile('setDatabaseReadWriteMode.fdb');
+        const filename = getDriverTestDatabaseUri(testConfig, 'setDatabaseReadWriteMode.fdb');
         const attachment1 = await client.createDatabase(filename);
         await attachment1.disconnect();
 
@@ -166,7 +150,9 @@ export function runCommonTests(client: Client) {
 
     describe('Attachment', () => {
       test('#startTransaction()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-startTransaction.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-startTransaction.fdb'),
+        );
 
         const isolationQuery = "select rdb$get_context('SYSTEM', 'ISOLATION_LEVEL') from rdb$database";
 
@@ -196,7 +182,7 @@ export function runCommonTests(client: Client) {
       });
 
       test('#prepare()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-prepare.fdb'));
+        const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'Attachment-prepare.fdb'));
         const transaction = await attachment.startTransaction();
 
         const statement = await attachment.prepare(transaction, 'create table t1 (n1 integer)');
@@ -221,7 +207,7 @@ export function runCommonTests(client: Client) {
       });
 
       test('statement.type', async () => {
-        const attachment = await client.createDatabase(getTempFile('Statement-type.fdb'));
+        const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'Statement-type.fdb'));
         const transaction = await attachment.startTransaction();
 
         const s1 = await attachment.prepare(transaction, 'select * from rdb$database');
@@ -254,7 +240,7 @@ export function runCommonTests(client: Client) {
       //// TODO: #executeTransaction
 
       test('#execute()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-execute.fdb'));
+        const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'Attachment-execute.fdb'));
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -267,7 +253,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeQuery()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-executeQuery.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-executeQuery.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -283,7 +271,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeSingleton()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-executeSingleton.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-executeSingleton.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -298,7 +288,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeSingletonAsObject()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-executeSingletonAsObject.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-executeSingletonAsObject.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -314,7 +306,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeReturning()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-executeReturning.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-executeReturning.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -329,7 +323,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeReturningAsObject()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-executeReturningAsObject.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-executeReturningAsObject.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -345,7 +341,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#queueEvents()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-queueEvents.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-queueEvents.fdb'),
+        );
 
         const eventNames: [string, number][] = [
           ['EVENT1', 16],
@@ -428,7 +426,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#cancelOperation()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-cancelOperation.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-cancelOperation.fdb'),
+        );
         const transaction1 = await attachment.startTransaction();
 
         await attachment.execute(transaction1, 'create table t1(n1 integer)');
@@ -461,14 +461,16 @@ export function runCommonTests(client: Client) {
 
     describe('Transaction', () => {
       test('#commit()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Transaction-commit.fdb'));
+        const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'Transaction-commit.fdb'));
         const transaction = await attachment.startTransaction();
         await transaction.commit();
         await attachment.dropDatabase();
       });
 
       test('#commitRetaining()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Transaction-commitRetaining.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Transaction-commitRetaining.fdb'),
+        );
         const transaction = await attachment.startTransaction();
         await transaction.commitRetaining();
         await transaction.commit();
@@ -476,14 +478,18 @@ export function runCommonTests(client: Client) {
       });
 
       test('#rollback()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Transaction-rollback.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Transaction-rollback.fdb'),
+        );
         const transaction = await attachment.startTransaction();
         await transaction.rollback();
         await attachment.dropDatabase();
       });
 
       test('#rollbackRetaining()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Transaction-rollbackRetaining.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Transaction-rollbackRetaining.fdb'),
+        );
         const transaction = await attachment.startTransaction();
         await transaction.rollbackRetaining();
         await transaction.rollback();
@@ -491,7 +497,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('transaction left opened', async () => {
-        const attachment = await client.createDatabase(getTempFile('Transaction-left-opened.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Transaction-left-opened.fdb'),
+        );
         await attachment.startTransaction();
         await attachment.dropDatabase();
       });
@@ -499,7 +507,7 @@ export function runCommonTests(client: Client) {
 
     describe('Statement', () => {
       test('#execute()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Statement-execute.fdb'));
+        const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'Statement-execute.fdb'));
         const transaction = await attachment.startTransaction();
 
         const statement1 = await attachment.prepare(transaction, 'create table t1 (n1 integer)');
@@ -530,7 +538,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeQuery()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Statement-executeQuery.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Statement-executeQuery.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         const statement1 = await attachment.prepare(transaction, 'create table t1 (n1 integer)');
@@ -548,7 +558,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeSingleton()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-executeSingleton.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-executeSingleton.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -568,7 +580,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#executeReturning()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Attachment-executeReturning.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Attachment-executeReturning.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -588,7 +602,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#columnLabels()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Statement-columnLabels.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Statement-columnLabels.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         const statement1 = await attachment.prepare(transaction, 'create table t1 (n1 integer)');
@@ -606,7 +622,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#hasResultSet()', async () => {
-        const attachment = await client.createDatabase(getTempFile('Statement-hasResultSet.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'Statement-hasResultSet.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         const statement1 = await attachment.prepare(transaction, 'create table t1 (n1 integer)');
@@ -620,7 +638,11 @@ export function runCommonTests(client: Client) {
         expect(statement2.hasResultSet).toBe(false);
         await statement2.dispose();
 
-        const statement3 = await attachment.prepare(transaction, 'insert into t1 values (1) returning *');
+        const serverMajorVersion = await getServerMajorVersion(attachment, transaction);
+        const statement3 = await attachment.prepare(
+          transaction,
+          serverMajorVersion >= 4 ? 'insert into t1 values (1) returning *' : 'insert into t1 values (1) returning n1',
+        );
         expect(statement3.hasResultSet).toBe(false);
         await statement3.dispose();
 
@@ -650,9 +672,10 @@ export function runCommonTests(client: Client) {
 
     describe('ResultSet', () => {
       test('#fetch()', async () => {
-        const attachment = await client.createDatabase(getTempFile('ResultSet-fetch.fdb'));
+        const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'ResultSet-fetch.fdb'));
 
         let transaction = await attachment.startTransaction();
+        const serverMajorVersion = await getServerMajorVersion(attachment, transaction);
 
         const blobBuffer = Buffer.alloc(11, '12345678á9');
 
@@ -670,14 +693,18 @@ export function runCommonTests(client: Client) {
             type: 'numeric(15, 2)',
             valToStr: (v: any) => v,
           },
-          { name: 'x_int128', type: 'int128', valToStr: (v: any) => v },
-          {
-            name: 'x_int128_scale',
-            type: 'numeric(20, 2)',
-            valToStr: (v: any) => v,
-          },
-          { name: 'x_dec16', type: 'decfloat(16)', valToStr: (v: any) => v },
-          { name: 'x_dec34', type: 'decfloat(34)', valToStr: (v: any) => v },
+          ...(serverMajorVersion >= 4
+            ? ([
+                { name: 'x_int128', type: 'int128', valToStr: (v: any) => v },
+                {
+                  name: 'x_int128_scale',
+                  type: 'numeric(20, 2)',
+                  valToStr: (v: any) => v,
+                },
+                { name: 'x_dec16', type: 'decfloat(16)', valToStr: (v: any) => v },
+                { name: 'x_dec34', type: 'decfloat(34)', valToStr: (v: any) => v },
+              ] as { name: string; type: string; valToStr: (v: any) => any }[])
+            : []),
           {
             name: 'x_double',
             type: 'double precision',
@@ -703,18 +730,22 @@ export function runCommonTests(client: Client) {
             type: 'time',
             valToStr: (v: any) => `time '${timeToString(v)}'`,
           },
-          {
-            name: 'x_time_tz1',
-            type: 'time with time zone',
-            valToStr: (v: ZonedDate) =>
-              `${timeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
-          },
-          {
-            name: 'x_time_tz2',
-            type: 'time with time zone',
-            valToStr: (v: ZonedDate) =>
-              `${timeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
-          },
+          ...(serverMajorVersion >= 4
+            ? ([
+                {
+                  name: 'x_time_tz1',
+                  type: 'time with time zone',
+                  valToStr: (v: ZonedDate) =>
+                    `${timeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
+                },
+                {
+                  name: 'x_time_tz2',
+                  type: 'time with time zone',
+                  valToStr: (v: ZonedDate) =>
+                    `${timeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
+                },
+              ] as { name: string; type: string; valToStr: (v: any) => any }[])
+            : []),
           {
             name: 'x_timestamp1',
             type: 'timestamp',
@@ -730,18 +761,22 @@ export function runCommonTests(client: Client) {
             type: 'timestamp',
             valToStr: (v: any) => `timestamp '${dateTimeToString(v)}'`,
           },
-          {
-            name: 'x_timestamp_tz1',
-            type: 'timestamp with time zone',
-            valToStr: (v: ZonedDate) =>
-              `${dateTimeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
-          },
-          {
-            name: 'x_timestamp_tz2',
-            type: 'timestamp with time zone',
-            valToStr: (v: ZonedDate) =>
-              `${dateTimeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
-          },
+          ...(serverMajorVersion >= 4
+            ? ([
+                {
+                  name: 'x_timestamp_tz1',
+                  type: 'timestamp with time zone',
+                  valToStr: (v: ZonedDate) =>
+                    `${dateTimeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
+                },
+                {
+                  name: 'x_timestamp_tz2',
+                  type: 'timestamp with time zone',
+                  valToStr: (v: ZonedDate) =>
+                    `${dateTimeTzToString({ date: v.date, timeZone: 'GMT', offset: 0 })} at time zone '${v.timeZone}'`,
+                },
+              ] as { name: string; type: string; valToStr: (v: any) => any }[])
+            : []),
           { name: 'x_boolean', type: 'boolean', valToStr: (v: any) => v },
           {
             name: 'x_varchar',
@@ -800,34 +835,46 @@ export function runCommonTests(client: Client) {
             -3.45,
             -2,
             -3.45,
-            '-45699999999999999999999999999999999876',
-            '-45699999999999999999999999999999999.87',
-            '-456999999999876',
-            '-456999999999999999999999999999.87',
+            ...(serverMajorVersion >= 4
+              ? [
+                  '-45699999999999999999999999999999999876',
+                  '-45699999999999999999999999999999999.87',
+                  '-456999999999876',
+                  '-456999999999999999999999999999.87',
+                ]
+              : []),
             -4.567,
             new Date(2017, 3 - 1, 26),
             new Date(new Date(2000, 3 - 1, 26).setFullYear(50)),
             new Date(9999, 3 - 1, 26),
             new Date(2020, 1 - 1, 1, 11, 56, 32, 123),
-            {
-              date: new Date(Date.UTC(2020, 1 - 1, 1, 11, 56, 32, 123)),
-              timeZone: 'America/New_York',
-            } as ZonedDate,
-            {
-              date: new Date(Date.UTC(2020, 1 - 1, 1, 11, 56, 32, 123)),
-              timeZone: 'America/Sao_Paulo',
-            } as ZonedDate,
+            ...(serverMajorVersion >= 4
+              ? [
+                  {
+                    date: new Date(Date.UTC(2020, 1 - 1, 1, 11, 56, 32, 123)),
+                    timeZone: 'America/New_York',
+                  } as ZonedDate,
+                  {
+                    date: new Date(Date.UTC(2020, 1 - 1, 1, 11, 56, 32, 123)),
+                    timeZone: 'America/Sao_Paulo',
+                  } as ZonedDate,
+                ]
+              : []),
             new Date(2017, 3 - 1, 26, 11, 56, 32, 123),
             new Date(new Date(2000, 3 - 1, 26, 11, 56, 32, 123).setFullYear(50)),
             new Date(9999, 3 - 1, 26, 11, 56, 32, 123),
-            {
-              date: new Date(Date.UTC(2021, 6 - 1, 7, 11, 56, 32, 123)),
-              timeZone: 'America/New_York',
-            } as ZonedDate,
-            {
-              date: new Date(Date.UTC(2021, 6 - 1, 7, 11, 56, 32, 123)),
-              timeZone: 'America/Sao_Paulo',
-            } as ZonedDate,
+            ...(serverMajorVersion >= 4
+              ? [
+                  {
+                    date: new Date(Date.UTC(2021, 6 - 1, 7, 11, 56, 32, 123)),
+                    timeZone: 'America/New_York',
+                  } as ZonedDate,
+                  {
+                    date: new Date(Date.UTC(2021, 6 - 1, 7, 11, 56, 32, 123)),
+                    timeZone: 'America/Sao_Paulo',
+                  } as ZonedDate,
+                ]
+              : []),
             true,
             '123áé4567',
             '123áé4567',
@@ -859,39 +906,35 @@ export function runCommonTests(client: Client) {
 
         const statement3 = await attachment.prepare(
           transaction,
-          `select x_short,
-							x_int,
-							x_int_scale,
-							x_bigint,
-							x_bigint_scale,
-							x_int128,
-							x_int128_scale,
-							x_dec16,
-							x_dec34,
-							x_double,
-							x_date1,
-							x_date2,
-							x_date3,
-							x_time,
-							x_time_tz1,
-							x_time_tz2,
-							x_timestamp1,
-							x_timestamp2,
-							x_timestamp3,
-							x_timestamp_tz1,
-							x_timestamp_tz2,
-							x_boolean,
-							x_varchar,
-							char_length(x_varchar),
-							octet_length(x_varchar),
-							x_char,
-							char_length(x_char),
-							octet_length(x_char),
-							null,
-							x_char || null,
-							x_blob1,
-							x_blob2
-					from t1`,
+          `select ${[
+            'x_short',
+            'x_int',
+            'x_int_scale',
+            'x_bigint',
+            'x_bigint_scale',
+            ...(serverMajorVersion >= 4 ? ['x_int128', 'x_int128_scale', 'x_dec16', 'x_dec34'] : []),
+            'x_double',
+            'x_date1',
+            'x_date2',
+            'x_date3',
+            'x_time',
+            ...(serverMajorVersion >= 4 ? ['x_time_tz1', 'x_time_tz2'] : []),
+            'x_timestamp1',
+            'x_timestamp2',
+            'x_timestamp3',
+            ...(serverMajorVersion >= 4 ? ['x_timestamp_tz1', 'x_timestamp_tz2'] : []),
+            'x_boolean',
+            'x_varchar',
+            'char_length(x_varchar)',
+            'octet_length(x_varchar)',
+            'x_char',
+            'char_length(x_char)',
+            'octet_length(x_char)',
+            'null',
+            'x_char || null',
+            'x_blob1',
+            'x_blob2',
+          ].join(',\n\t\t\t\t\t\t\t')}\n\t\t\t\t\tfrom t1`,
         );
         const resultSet3 = await statement3.executeQuery(transaction);
 
@@ -905,22 +948,28 @@ export function runCommonTests(client: Client) {
           expect(columns[n++]).toBe(-3.45);
           expect(columns[n++]).toBe(-2);
           expect(columns[n++]).toBe(-3.45);
-          expect(columns[n++]).toBe('-45699999999999999999999999999999999876');
-          expect(columns[n++]).toBe('-45699999999999999999999999999999999.87');
-          expect(columns[n++]).toBe('-456999999999876');
-          expect(columns[n++]).toBe('-456999999999999999999999999999.87');
+          if (serverMajorVersion >= 4) {
+            expect(columns[n++]).toBe('-45699999999999999999999999999999999876');
+            expect(columns[n++]).toBe('-45699999999999999999999999999999999.87');
+            expect(columns[n++]).toBe('-456999999999876');
+            expect(columns[n++]).toBe('-456999999999999999999999999999.87');
+          }
           expect(columns[n++]).toBe(-4.567);
           expect(dateTimeToString(columns[n++])).toBe('2017-3-26 0:0:0.0');
           expect(dateTimeToString(columns[n++])).toBe('0050-3-26 0:0:0.0');
           expect(dateTimeToString(columns[n++])).toBe('9999-3-26 0:0:0.0');
           expect(timeToString(columns[n++])).toBe('11:56:32.123');
-          expect(timeTzToString(columns[n++])).toBe(`time '6:56:32.123 America/New_York'`);
-          expect(timeTzToString(columns[n++])).toBe(`time '8:56:32.123 America/Sao_Paulo'`);
+          if (serverMajorVersion >= 4) {
+            expect(timeTzToString(columns[n++])).toBe(`time '6:56:32.123 America/New_York'`);
+            expect(timeTzToString(columns[n++])).toBe(`time '8:56:32.123 America/Sao_Paulo'`);
+          }
           expect(dateTimeToString(columns[n++])).toBe('2017-3-26 11:56:32.123');
           expect(dateTimeToString(columns[n++])).toBe('0050-3-26 11:56:32.123');
           expect(dateTimeToString(columns[n++])).toBe('9999-3-26 11:56:32.123');
-          expect(dateTimeTzToString(columns[n++])).toBe(`timestamp '2021-6-7 7:56:32.123 America/New_York'`);
-          expect(dateTimeTzToString(columns[n++])).toBe(`timestamp '2021-6-7 8:56:32.123 America/Sao_Paulo'`);
+          if (serverMajorVersion >= 4) {
+            expect(dateTimeTzToString(columns[n++])).toBe(`timestamp '2021-6-7 7:56:32.123 America/New_York'`);
+            expect(dateTimeTzToString(columns[n++])).toBe(`timestamp '2021-6-7 8:56:32.123 America/Sao_Paulo'`);
+          }
           expect(columns[n++]).toBe(true);
           expect(columns[n++]).toBe('123áé4567');
           expect(columns[n++]).toBe(9);
@@ -958,7 +1007,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#fetchAsObject()', async () => {
-        const attachment = await client.createDatabase(getTempFile('ResultSet-fetchAsObject.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'ResultSet-fetchAsObject.fdb'),
+        );
         const transaction = await attachment.startTransaction();
         const resultSet = await attachment.executeQuery(transaction, 'select 1 as a, 2 as b from rdb$database');
         const output = await resultSet.fetchAsObject<{
@@ -974,7 +1025,7 @@ export function runCommonTests(client: Client) {
       });
 
       test('NONE charset uses charSetForNONE for read/write', async () => {
-        const filename = getTempFile('ResultSet-none-charset.fdb');
+        const filename = getDriverTestDatabaseUri(testConfig, 'ResultSet-none-charset.fdb');
 
         {
           const attachment = await client.createDatabase(filename);
@@ -1036,7 +1087,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#fetch() with fetchSize', async () => {
-        const attachment = await client.createDatabase(getTempFile('ResultSet-fetch-with-fetchSize.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'ResultSet-fetch-with-fetchSize.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, 'create table t1 (n1 integer)');
@@ -1075,7 +1128,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#fetch() with fetchSize and exception', async () => {
-        const attachment = await client.createDatabase(getTempFile('ResultSet-fetch-with-fetchSize.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'ResultSet-fetch-with-fetchSize.fdb'),
+        );
         const transaction = await attachment.startTransaction();
 
         await attachment.execute(transaction, "create exception e1 'e1'");
@@ -1109,7 +1164,9 @@ export function runCommonTests(client: Client) {
       });
 
       test('#fetch() with large blob', async () => {
-        const attachment = await client.createDatabase(getTempFile('ResultSet-fetch-with-large-blob.fdb'));
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'ResultSet-fetch-with-large-blob.fdb'),
+        );
         let transaction = await attachment.startTransaction();
         await attachment.execute(transaction, `create table t1 (x_blob blob)`);
 
@@ -1147,10 +1204,10 @@ export function runCommonTests(client: Client) {
 
     describe('BlobStream', () => {
       test('#seek()', async () => {
-        const attachment = await client.createDatabase(getTempFile('BlobStream-seek.fdb'));
+        const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'BlobStream-seek.fdb'));
         const transaction = await attachment.startTransaction();
 
-        await attachment.execute(transaction, 'create table t1 (b blob)');
+        await attachment.execute(transaction, 'create table t1 (id integer, b blob)');
         await transaction.commitRetaining();
 
         const blobStream = await attachment.createBlob(transaction, {
@@ -1158,9 +1215,9 @@ export function runCommonTests(client: Client) {
         });
         await blobStream.write(Buffer.alloc(10, '1234567890'));
         await blobStream.close();
-        await attachment.execute(transaction, 'insert into t1 (b) values (?)', [blobStream.blob]);
+        await attachment.execute(transaction, 'insert into t1 (id, b) values (?, ?)', [1, blobStream.blob]);
 
-        const blob = (await attachment.executeSingleton(transaction, 'select b from t1'))[0] as Blob;
+        const blob = (await attachment.executeSingleton(transaction, 'select b from t1 where id = 1'))[0] as Blob;
         const readBlobStream = await attachment.openBlob(transaction, blob);
 
         const buffer = Buffer.alloc(3);

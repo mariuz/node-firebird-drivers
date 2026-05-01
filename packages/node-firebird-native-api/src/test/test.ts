@@ -24,7 +24,12 @@ describe('node-firebird-native-api', () => {
   }
 
   function getTempFile(name: string): string {
-    const database = `${testConfig.tmpDir}/${name}`;
+    const extensionIndex = name.lastIndexOf('.');
+    const tick = process.hrtime.bigint();
+    const databaseName =
+      extensionIndex > 0 ? `${name.slice(0, extensionIndex)}-${tick}${name.slice(extensionIndex)}` : `${name}-${tick}`;
+    const database = `${testConfig.tmpDir}/${databaseName}`;
+
     return (
       (testConfig.host ?? '') +
       (testConfig.host && testConfig.port ? `/${testConfig.port}` : '') +

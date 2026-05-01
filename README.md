@@ -7,6 +7,7 @@ This project is the root project of a monorepo with Firebird drivers for Node.js
 The sub projects are there:
 
 - [node-firebird-driver-native - High-level Firebird client using native fbclient library](packages/node-firebird-driver-native/README.md)
+- [node-firebird-driver-wire - High-level Firebird client without native fbclient library dependency](packages/node-firebird-driver-wire/README.md)
 - [node-firebird-native-api - Low-level Firebird client directly mapped from fbclient interfaces](packages/node-firebird-native-api/README.md)
 - [node-firebird-driver - Interface files for the high-level driver(s)](packages/node-firebird-driver/README.md)
 
@@ -23,7 +24,7 @@ Clone this repo then run:
 - `yarn run test`
   (default user and password will be used during tests)
 
-As of now tests require **Firebird 4** server and will fail when executed using **Firebird 3**.
+As of now tests require **Firebird 4+** server and will fail when executed using **Firebird 3**.
 
 You can put test configuration in `.env` file in the project root directory, like the following example:
 

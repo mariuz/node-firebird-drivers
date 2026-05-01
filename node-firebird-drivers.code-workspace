@@ -9,6 +9,10 @@
       "path": "packages/node-firebird-driver-native",
     },
     {
+      "name": "driver-wire",
+      "path": "packages/node-firebird-driver-wire",
+    },
+    {
       "name": "native-api",
       "path": "packages/node-firebird-native-api",
     },

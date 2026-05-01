@@ -1,6 +1,10 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build:
@@ -19,6 +23,10 @@ jobs:
           - 22.x
           - 24.x
           - 25.x
+
+    env:
+      ISC_USER: sysdba
+      ISC_PASSWORD: masterkey
 
     steps:
       - uses: actions/checkout@v6
@@ -39,6 +47,7 @@ jobs:
           wget -nv -O Firebird-4.0.6.3221-0.amd64.tar.gz "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.6/Firebird-4.0.6.3221-0.amd64.tar.gz"
           tar xzvf Firebird-4.0.6.3221-0.amd64.tar.gz
           (cd Firebird-4.0.6.3221-0.amd64; sudo ./install.sh -silent)
+          sudo awk '/^ISC_USER=|^ISC_PASSWORD=/{print}' /opt/firebird/SYSDBA.password >> "$GITHUB_ENV"
           sudo usermod -a -G firebird `whoami`
           sudo gpasswd -r firebird
 
@@ -56,6 +65,14 @@ jobs:
           set FB_ZIP=Firebird-4.0.6.3221-0-x64.zip
           powershell Invoke-WebRequest "https://github.com/FirebirdSQL/firebird/releases/download/v4.0.6/$env:FB_ZIP" -OutFile "$env:FB_ZIP"
           7z x -oC:\Firebird %FB_ZIP%
+          cd /d C:\Firebird
+          instreg install -z
+          > init-security.sql echo create user SYSDBA password 'masterkey';
+          >> init-security.sql echo quit;
+          isql -user sysdba employee -i init-security.sql
+          del init-security.sql
+          instsvc install -z
+          instsvc start
 
       - name: Build
         shell: bash
@@ -66,15 +83,13 @@ jobs:
       - name: Test (Linux)
         if: startsWith(matrix.os, 'ubuntu-')
         run: |
-          sg firebird -c "LD_LIBRARY_PATH=/usr/lib64 corepack yarn test"
+          sg firebird -c "env ISC_USER=${ISC_USER} ISC_PASSWORD=${ISC_PASSWORD} LD_LIBRARY_PATH=/usr/lib64 corepack yarn test"
 
       - name: Test (MacOS)
         if: startsWith(matrix.os, 'macos-')
         run: |
           sudo mkdir /tmp/node-fb
           sudo chmod 777 /tmp/node-fb
-          export ISC_USER=sysdba
-          export ISC_PASSWORD=masterkey
           export NODE_FB_TEST_TMP_DIR=/tmp/node-fb
           corepack yarn test
 
@@ -83,6 +98,8 @@ jobs:
         shell: cmd
         run: |
           set PATH=C:\Firebird;%PATH%
+          if not exist C:\Windows\Temp\node-fb mkdir C:\Windows\Temp\node-fb
+          set NODE_FB_TEST_TMP_DIR=C:/Windows/Temp/node-fb
           corepack yarn test
 
       - name: Upload native-api-${{ matrix.os }}-${{ matrix.node-version }}
@@ -102,3 +119,9 @@ jobs:
         with:
           name: driver-native-${{ matrix.os }}-${{ matrix.node-version }}
           path: packages/node-firebird-driver-native
+
+      - name: Upload driver-wire-${{ matrix.os }}-${{ matrix.node-version }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: driver-wire-${{ matrix.os }}-${{ matrix.node-version }}
+          path: packages/node-firebird-driver-wire

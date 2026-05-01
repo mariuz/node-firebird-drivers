@@ -52,12 +52,21 @@ export namespace sqlTypes {
 /** DPB constants. */
 export namespace dpb {
   export const version1 = 1;
+  export const version2 = 2;
+  export const page_size = 4;
   export const lc_ctype = 48;
   export const force_write = 24;
   export const user_name = 28;
   export const password = 29;
+  export const overwrite = 54;
+  export const dummy_packet_interval = 58;
   export const sql_role_name = 60;
+  export const sql_dialect = 63;
   export const set_db_readonly = 64;
+  export const utf8_filename = 77;
+  export const specific_auth_data = 84;
+  export const auth_plugin_list = 85;
+  export const auth_plugin_name = 86;
 }
 
 /** TPB constants. */
@@ -107,7 +116,25 @@ export namespace blobInfo {
 
 /** Statement info. */
 export namespace statementInfo {
+  export const sqlSelect = 4;
+  export const sqlBind = 5;
+  export const sqlDescribeVars = 7;
+  export const sqlDescribeEnd = 8;
+  export const sqlSqldaSeq = 9;
+  export const sqlType = 11;
+  export const sqlSubType = 12;
+  export const sqlScale = 13;
+  export const sqlLength = 14;
+  export const sqlField = 16;
+  export const sqlRelation = 17;
+  export const sqlOwner = 18;
+  export const sqlAlias = 19;
+  export const sqlStmtType = 21;
+  export const sqlRelationAlias = 25;
+  export const sqlStmtFlags = 27;
   export const sqlExecPathBlrText = 32;
+  export const sqlStmtSelect = 1;
+  export const sqlStmtSelectForUpd = 12;
 }
 
 /** Common info. */
