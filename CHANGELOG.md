@@ -1,3 +1,7 @@
+## May, 04, 2026
+
+- Feature [#166](https://github.com/asfernandes/node-firebird-drivers/issues/166) - Create pure Node.js driver that do not depend on native fbclient.
+
 ## February, 21, 2026
 
 - Feature [#165](https://github.com/asfernandes/node-firebird-drivers/pull/165) - Add ConnectOption charSetForNONE.
