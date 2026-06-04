@@ -21,7 +21,7 @@ export function parseDatabaseUri(uri: string): ParsedDatabaseUri {
     const remainder = urlMatch[2];
     let host = 'localhost';
     let port = 3050;
-    let database = '';
+    let database: string;
 
     if (remainder.startsWith('/')) {
       // Hostless absolute Unix path: e.g. inet:///db/mydb.fdb

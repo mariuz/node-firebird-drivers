@@ -9,7 +9,7 @@ import * as fb from 'node-firebird-native-api';
 /** Transaction implementation. */
 export class TransactionImpl extends AbstractTransaction {
   // Override declarations.
-  override attachment: AttachmentImpl;
+  declare attachment: AttachmentImpl;
 
   transactionHandle?: fb.Transaction;
 

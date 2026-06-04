@@ -1,17 +1,17 @@
 import { AbstractBlobStream } from './blob';
 import { AbstractClient } from './client';
+import { AbstractEvents } from './events';
 import { AbstractResultSet } from './resultset';
 import { AbstractStatement } from './statement';
 import { AbstractTransaction } from './transaction';
-import { AbstractEvents } from './events';
 
 import {
   Attachment,
   Blob,
   CreateBlobOptions,
+  Events,
   ExecuteOptions,
   ExecuteQueryOptions,
-  Events,
   FetchOptions,
   PrepareOptions,
   TransactionOptions,
@@ -25,19 +25,19 @@ export abstract class AbstractAttachment implements Attachment {
   charSetForNONE = 'utf8';
 
   /** Default transaction options. */
-  defaultTransactionOptions: TransactionOptions;
+  defaultTransactionOptions?: TransactionOptions;
 
   /** Default query's prepare options. */
-  defaultPrepareOptions: PrepareOptions;
+  defaultPrepareOptions?: PrepareOptions;
 
   /** Default query's execute options. */
-  defaultExecuteOptions: ExecuteOptions;
+  defaultExecuteOptions?: ExecuteOptions;
 
   /** Default query's executeQuery options. */
-  defaultExecuteQueryOptions: ExecuteQueryOptions;
+  defaultExecuteQueryOptions?: ExecuteQueryOptions;
 
   /** Default result set's fetch options. */
-  defaultFetchOptions: FetchOptions;
+  defaultFetchOptions?: FetchOptions;
 
   protected constructor(public client?: AbstractClient) {}
 

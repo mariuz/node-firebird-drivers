@@ -21,7 +21,7 @@ import * as fb from 'node-firebird-native-api';
 /** Attachment implementation. */
 export class AttachmentImpl extends AbstractAttachment {
   // Override declarations.
-  override client: ClientImpl;
+  declare client: ClientImpl;
 
   attachmentHandle?: fb.Attachment;
 

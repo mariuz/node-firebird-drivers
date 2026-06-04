@@ -17,25 +17,25 @@ export abstract class AbstractClient implements Client {
   attachments = new Set<AbstractAttachment>();
 
   /** Default connect options. */
-  defaultConnectOptions: ConnectOptions;
+  defaultConnectOptions?: ConnectOptions;
 
   /** Set default create database options. */
-  defaultCreateDatabaseOptions: CreateDatabaseOptions;
+  defaultCreateDatabaseOptions?: CreateDatabaseOptions;
 
   /** Default transaction options. */
-  defaultTransactionOptions: TransactionOptions;
+  defaultTransactionOptions?: TransactionOptions;
 
   /** Default query's prepare options. */
-  defaultPrepareOptions: PrepareOptions;
+  defaultPrepareOptions?: PrepareOptions;
 
   /** Default query's execute options. */
-  defaultExecuteOptions: ExecuteOptions;
+  defaultExecuteOptions?: ExecuteOptions;
 
   /** Default query's executeQuery options. */
-  defaultExecuteQueryOptions: ExecuteQueryOptions;
+  defaultExecuteQueryOptions?: ExecuteQueryOptions;
 
   /** Default result set's fetch options. */
-  defaultFetchOptions: FetchOptions;
+  defaultFetchOptions?: FetchOptions;
 
   /** Disposes this client's resources. */
   async dispose(): Promise<void> {

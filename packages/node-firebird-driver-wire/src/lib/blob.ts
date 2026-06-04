@@ -31,7 +31,7 @@ function decodePackedBlobSegments(buffer: Buffer): Buffer[] {
 }
 
 export class BlobStreamImpl extends AbstractBlobStream {
-  override attachment: AttachmentImpl;
+  declare attachment: AttachmentImpl;
   blobHandle?: BlobHandle;
   private inlineBlob?: { info: Buffer; data: Buffer };
   private position = 0;

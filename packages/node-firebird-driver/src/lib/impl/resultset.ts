@@ -9,7 +9,7 @@ export abstract class AbstractResultSet implements ResultSet {
   diposeStatementOnClose = false;
 
   /** Default result set's fetch options. */
-  defaultFetchOptions: FetchOptions;
+  defaultFetchOptions?: FetchOptions;
 
   protected constructor(
     public statement?: AbstractStatement,

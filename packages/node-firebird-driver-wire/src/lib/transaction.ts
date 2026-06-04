@@ -7,7 +7,7 @@ import { AbstractTransaction } from 'node-firebird-driver/dist/lib/impl';
 import { TransactionHandle } from './wire-protocol';
 
 export class TransactionImpl extends AbstractTransaction {
-  override attachment: AttachmentImpl;
+  declare attachment: AttachmentImpl;
   transactionHandle?: TransactionHandle;
 
   static async start(attachment: AttachmentImpl, options?: TransactionOptions): Promise<TransactionImpl> {

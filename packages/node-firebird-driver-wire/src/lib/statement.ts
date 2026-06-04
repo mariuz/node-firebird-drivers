@@ -10,8 +10,8 @@ import { createDataReader, createDataWriter, createDescriptors, DataReader, Data
 import { StatementHandle } from './wire-protocol';
 
 export class StatementImpl extends AbstractStatement {
-  override attachment: AttachmentImpl;
-  override hasResultSet: boolean;
+  declare attachment: AttachmentImpl;
+  declare hasResultSet: boolean;
 
   statementHandle?: StatementHandle;
   inBuffer = Buffer.alloc(0);

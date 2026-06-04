@@ -9,8 +9,8 @@ import * as fb from 'node-firebird-native-api';
 /** ResultSet implementation. */
 export class ResultSetImpl extends AbstractResultSet {
   // Override declarations.
-  override statement: StatementImpl;
-  override transaction: TransactionImpl;
+  declare statement: StatementImpl;
+  declare transaction: TransactionImpl;
 
   resultSetHandle?: fb.ResultSet;
   delayedError: any;
@@ -83,11 +83,10 @@ export class ResultSetImpl extends AbstractResultSet {
 
         if (nextFetch == fb.Status.RESULT_OK) {
           const buffer1 = buffer;
-          buffer = ++buffer % 2;
-
           const finish = options && options.fetchSize && rows.length + 1 >= options.fetchSize;
 
           if (!finish) {
+            buffer = (buffer + 1) % 2;
             nextFetchPromise = this.resultSetHandle!.fetchNextAsync(status, buffers[buffer]);
           }
 

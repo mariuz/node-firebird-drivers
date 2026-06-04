@@ -15,16 +15,16 @@ import { TextDecoder } from 'util';
 /** Statement implementation. */
 export class StatementImpl extends AbstractStatement {
   // Override declarations.
-  override attachment: AttachmentImpl;
-  override hasResultSet: boolean;
+  declare attachment: AttachmentImpl;
+  declare hasResultSet: boolean;
 
   statementHandle?: fb.Statement;
   inMetadata?: fb.MessageMetadata;
   outMetadata?: fb.MessageMetadata;
-  inBuffer: Uint8Array;
-  outBuffer: Uint8Array;
-  dataWriter: DataWriter;
-  dataReader: DataReader;
+  inBuffer!: Uint8Array;
+  outBuffer!: Uint8Array;
+  dataWriter!: DataWriter;
+  dataReader!: DataReader;
   typePromise?: Promise<StatementType>;
 
   static async prepare(

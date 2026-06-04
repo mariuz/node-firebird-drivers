@@ -7,8 +7,8 @@ import { AbstractResultSet } from 'node-firebird-driver/dist/lib/impl';
 import { CursorHandle } from './wire-protocol';
 
 export class ResultSetImpl extends AbstractResultSet {
-  override statement: StatementImpl;
-  override transaction: TransactionImpl;
+  declare statement: StatementImpl;
+  declare transaction: TransactionImpl;
 
   cursor?: CursorHandle;
   delayedError: unknown;

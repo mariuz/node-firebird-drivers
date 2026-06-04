@@ -20,7 +20,7 @@ import { AttachmentHandle, WireProtocol } from './wire-protocol';
 export { parseDatabaseUri } from './database-uri';
 
 export class AttachmentImpl extends AbstractAttachment {
-  override client: ClientImpl;
+  declare client: ClientImpl;
   protocol?: WireProtocol;
   attachmentHandle?: AttachmentHandle;
 

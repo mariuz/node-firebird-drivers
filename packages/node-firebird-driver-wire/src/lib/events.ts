@@ -4,7 +4,7 @@ import { EventHandle } from './wire-protocol';
 import { AbstractEvents } from 'node-firebird-driver/dist/lib/impl';
 
 export class EventsImpl extends AbstractEvents {
-  override attachment: AttachmentImpl;
+  declare attachment: AttachmentImpl;
   private eventHandle?: EventHandle;
 
   private constructor(attachment: AttachmentImpl) {

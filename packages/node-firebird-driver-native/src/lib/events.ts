@@ -7,9 +7,9 @@ import * as fb from 'node-firebird-native-api';
 /** Events implementation. */
 export class EventsImpl extends AbstractEvents {
   // Override declarations.
-  override attachment: AttachmentImpl;
+  declare attachment: AttachmentImpl;
 
-  eventCallback: fb.EventCallback;
+  eventCallback!: fb.EventCallback;
 
   static async queue(
     attachment: AttachmentImpl,

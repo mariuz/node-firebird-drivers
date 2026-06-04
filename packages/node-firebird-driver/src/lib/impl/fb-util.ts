@@ -2,25 +2,23 @@ import * as os from 'os';
 const littleEndian = os.endianness() === 'LE';
 
 import { AbstractAttachment } from './attachment';
-import { decodeString, encodeString } from './encoding';
 import { decodeDate, decodeTime, encodeDate, encodeTime } from './date-time';
+import { decodeString, encodeString } from './encoding';
 import { tzIdToString, tzStringToId } from './time-zones';
-import { AbstractTransaction } from './transaction';
 
 import {
-  Attachment,
   Blob,
   BlobStream,
   ConnectOptions,
   CreateBlobOptions,
   CreateDatabaseOptions,
   DatabaseReadWriteMode,
-  Transaction,
   TransactionIsolation,
   TransactionOptions,
   ZonedDate,
   ZonedDateEx,
 } from '..';
+import { AbstractTransaction } from './transaction';
 
 /** SQL_* type constants */
 export namespace sqlTypes {
@@ -330,8 +328,16 @@ export interface Descriptor {
   nullOffset: number;
 }
 
-export type DataReader = (attachment: Attachment, transaction: Transaction, buffer: Uint8Array) => Promise<any[]>;
-export type ItemReader = (attachment: Attachment, transaction: Transaction, buffer: Uint8Array) => Promise<any>;
+export type DataReader = (
+  attachment: AbstractAttachment,
+  transaction: AbstractTransaction,
+  buffer: Uint8Array,
+) => Promise<any[]>;
+export type ItemReader = (
+  attachment: AbstractAttachment,
+  transaction: AbstractTransaction,
+  buffer: Uint8Array,
+) => Promise<any>;
 
 /** Creates a data reader. */
 export function createDataReader(descriptors: Descriptor[]): DataReader {
@@ -512,20 +518,24 @@ export function createDataReader(descriptors: Descriptor[]): DataReader {
     };
   }
 
-  return async (attachment: Attachment, transaction: Transaction, buffer: Uint8Array): Promise<any[]> => {
+  return async (
+    attachment: AbstractAttachment,
+    transaction: AbstractTransaction,
+    buffer: Uint8Array,
+  ): Promise<any[]> => {
     return await Promise.all(mappers.map((mapper) => mapper(attachment, transaction, buffer)));
   };
 }
 
 export type DataWriter = (
-  attachment: Attachment,
-  transaction: Transaction,
+  attachment: AbstractAttachment,
+  transaction: AbstractTransaction,
   buffer: Uint8Array,
   values: any[] | undefined,
 ) => Promise<void>;
 export type ItemWriter = (
-  attachment: Attachment,
-  transaction: Transaction,
+  attachment: AbstractAttachment,
+  transaction: AbstractTransaction,
   buffer: Uint8Array,
   values: any,
 ) => Promise<void>;
@@ -549,8 +559,8 @@ export function createDataWriter(descriptors: Descriptor[]): DataWriter {
     const descriptor = descriptors[i];
 
     mappers[i] = async (
-      attachment: Attachment,
-      transaction: Transaction,
+      attachment: AbstractAttachment,
+      transaction: AbstractTransaction,
       buffer: Uint8Array,
       value: any,
     ): Promise<void> => {
@@ -568,8 +578,7 @@ export function createDataWriter(descriptors: Descriptor[]): DataWriter {
         case sqlTypes.SQL_VARYING: {
           //// TODO: octets
           const str = value as string;
-          const attached = attachment as AbstractAttachment;
-          const encoding = descriptor.charSet === charSets.none ? attached.charSetForNONE : 'utf8';
+          const encoding = descriptor.charSet === charSets.none ? attachment.charSetForNONE : 'utf8';
           const strBuffer = encodeString(str, encoding);
 
           const bytesArray = Uint8Array.from(strBuffer);
@@ -729,13 +738,18 @@ export function createDataWriter(descriptors: Descriptor[]): DataWriter {
     };
   }
 
-  return async (attachment: Attachment, transaction: Transaction, buffer: Uint8Array, values: any[]): Promise<void> => {
+  return async (
+    attachment: AbstractAttachment,
+    transaction: AbstractTransaction,
+    buffer: Uint8Array,
+    values: any[] | undefined,
+  ): Promise<void> => {
     if ((values || []).length !== descriptors.length) {
       throw new Error(
         `Incorrect number of parameters: expected ${descriptors.length}, received ${(values || []).length}.`,
       );
     }
 
-    await Promise.all(mappers.map((mapper, index) => mapper(attachment, transaction, buffer, values[index])));
+    await Promise.all(mappers.map((mapper, index) => mapper(attachment, transaction, buffer, values?.[index])));
   };
 }

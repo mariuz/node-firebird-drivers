@@ -17,16 +17,16 @@ export abstract class AbstractStatement implements Statement {
   abstract get columnLabels(): Promise<string[]>;
 
   /** When true, query result must be obtained with method executeQuery. */
-  readonly hasResultSet: boolean;
+  readonly hasResultSet: boolean = false;
 
   /** Default query's execute options. */
-  defaultExecuteOptions: ExecuteOptions;
+  defaultExecuteOptions?: ExecuteOptions;
 
   /** Default query's executeQuery options. */
-  defaultExecuteQueryOptions: ExecuteQueryOptions;
+  defaultExecuteQueryOptions?: ExecuteQueryOptions;
 
   /** Default result set's fetch options. */
-  defaultFetchOptions: FetchOptions;
+  defaultFetchOptions?: FetchOptions;
 
   protected constructor(public attachment?: AbstractAttachment) {}
 

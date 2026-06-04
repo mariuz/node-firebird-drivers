@@ -11,7 +11,7 @@ const MAX_SEGMENT_SIZE = 65535;
 /** BlobStream implementation. */
 export class BlobStreamImpl extends AbstractBlobStream {
   // Override declarations.
-  override attachment: AttachmentImpl;
+  declare attachment: AttachmentImpl;
 
   blobHandle?: fb.Blob;
 
