@@ -449,3 +449,24 @@ export interface ZonedDate {
 export interface ZonedDateEx extends ZonedDate {
   offset: number;
 }
+
+/** Firebird error class representing a database exception. */
+export class FbError extends Error {
+  /** Array of GDS error codes. */
+  readonly gdsCodes: number[];
+  /** Array of warning codes. */
+  readonly warnings: number[];
+  /** Array of diagnostic/error message strings. */
+  readonly messages: string[];
+
+  constructor(message: string, gdsCodes: number[], warnings: number[], messages: string[]) {
+    super(message);
+    this.name = 'FbError';
+    this.gdsCodes = gdsCodes;
+    this.warnings = warnings;
+    this.messages = messages;
+
+    // Set the prototype explicitly (standard for extending built-in Error in TypeScript)
+    Object.setPrototypeOf(this, FbError.prototype);
+  }
+}

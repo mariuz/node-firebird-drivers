@@ -19,6 +19,11 @@ namespace fb = Firebird;
 
 std::string formatStatus(fb::IStatus* status);
 
+void parseStatus(fb::IStatus* status,
+                 std::vector<int>& gdsCodes,
+                 std::vector<int>& warnings,
+                 std::vector<std::string>& messages);
+
 [[noreturn]]
 void rethrowException(const Napi::Env env);
 
@@ -92,6 +97,7 @@ protected:
 		{
 			error = true;
 			errorMsg = formatStatus(e.getStatus());
+			parseStatus(e.getStatus(), gdsCodes, warnings, messages);
 		}
 	}
 
@@ -100,7 +106,31 @@ protected:
 		if (!error)
 			deferred.Resolve(returnLambda(Env(), ret));
 		else
-			deferred.Reject(Napi::Error::New(Env(), errorMsg.c_str()).Value());
+		{
+			auto err = Napi::Error::New(Env(), errorMsg.c_str());
+
+			Napi::Array gdsCodesArray = Napi::Array::New(Env(), gdsCodes.size());
+			for (size_t i = 0; i < gdsCodes.size(); ++i) {
+				gdsCodesArray[i] = Napi::Number::New(Env(), gdsCodes[i]);
+			}
+
+			Napi::Array warningsArray = Napi::Array::New(Env(), warnings.size());
+			for (size_t i = 0; i < warnings.size(); ++i) {
+				warningsArray[i] = Napi::Number::New(Env(), warnings[i]);
+			}
+
+			Napi::Array messagesArray = Napi::Array::New(Env(), messages.size());
+			for (size_t i = 0; i < messages.size(); ++i) {
+				messagesArray[i] = Napi::String::New(Env(), messages[i]);
+			}
+
+			Napi::Object errObj = err.Value();
+			errObj.Set("gdsCodes", gdsCodesArray);
+			errObj.Set("warnings", warningsArray);
+			errObj.Set("messages", messagesArray);
+
+			deferred.Reject(errObj);
+		}
 	}
 
 	void OnError(const Napi::Error& e) override
@@ -114,6 +144,9 @@ private:
 	std::function<Napi::Value (const Napi::Env, T)> returnLambda;
 	bool error = false;
 	std::string errorMsg;
+	std::vector<int> gdsCodes;
+	std::vector<int> warnings;
+	std::vector<std::string> messages;
 	Napi::Promise::Deferred deferred;
 };
 

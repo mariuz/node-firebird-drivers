@@ -3,6 +3,7 @@ import {
   BlobSeekWhence,
   Client,
   DatabaseReadWriteMode,
+  FbError,
   StatementType,
   TransactionIsolation,
   ZonedDate,
@@ -194,7 +195,10 @@ export function runCommonTests(client: Client) {
           await attachment.prepare(transaction, 'create select t1 (n1 integer)');
         } catch (e) {
           error = e as Error;
-          expect(error.message).toBe(
+          expect(error).toBeInstanceOf(FbError);
+          const fbError = error as FbError;
+          expect(fbError.gdsCodes).toContain(335544569);
+          expect(fbError.message).toBe(
             'Dynamic SQL Error\n' + '-SQL error code = -104\n' + '-Token unknown - line 1, column 8\n' + '-select',
           );
         }

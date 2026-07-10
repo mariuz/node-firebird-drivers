@@ -1,6 +1,6 @@
 import { AttachmentImpl } from './attachment';
 
-import { Client, ConnectOptions, CreateDatabaseOptions } from 'node-firebird-driver';
+import { Client, ConnectOptions, CreateDatabaseOptions, FbError } from 'node-firebird-driver';
 
 import { AbstractClient } from 'node-firebird-driver/dist/lib/impl';
 
@@ -31,6 +31,11 @@ export class ClientImpl extends AbstractClient {
     const status = this.master!.getStatusSync()!;
     try {
       return await action(status);
+    } catch (e: any) {
+      if (e && (e.gdsCodes !== undefined || e.warnings !== undefined || e.messages !== undefined)) {
+        throw new FbError(e.message, e.gdsCodes || [], e.warnings || [], e.messages || []);
+      }
+      throw e;
     } finally {
       status.disposeSync();
     }
