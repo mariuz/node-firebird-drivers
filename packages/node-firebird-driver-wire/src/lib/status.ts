@@ -1,4 +1,4 @@
-import { FbError } from 'node-firebird-driver';
+import { FbError, parseRawStatusVector } from 'node-firebird-driver';
 
 import { statusArgument } from './constants';
 import { errorMessagesByCode } from './error-messages';
@@ -27,13 +27,15 @@ export type StatusVectorArgument =
   | { readonly type: 'string' | 'interpreted' | 'number'; readonly value: string };
 
 export class FirebirdWireError extends FbError {
+  override readonly name = 'FirebirdWireError';
+  readonly wireStatus: ParsedStatusVector;
+
   constructor(
     message: string,
-    readonly status: ParsedStatusVector,
+    wireStatus: ParsedStatusVector,
   ) {
-    super(message, status.gdsCodes, status.warnings, status.messages);
-    this.name = 'FirebirdWireError';
-    Object.setPrototypeOf(this, FirebirdWireError.prototype);
+    super(message, parseRawStatusVector(wireStatus.statusArguments as any));
+    this.wireStatus = wireStatus;
   }
 }
 

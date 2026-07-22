@@ -70,10 +70,7 @@ string formatStatus(fb::IStatus* status)
 }
 
 
-void parseStatusVector(const intptr_t* statusVector,
-                       std::vector<int>& gdsCodes,
-                       std::vector<int>& warnings,
-                       std::vector<std::string>& messages)
+void parseStatusVector(const intptr_t* statusVector, std::vector<StatusArg>& args)
 {
 	if (!statusVector)
 		return;
@@ -85,12 +82,15 @@ void parseStatusVector(const intptr_t* statusVector,
 		if (tag == isc_arg_end || tag == 0)
 			break;
 
+		StatusArg arg;
 		if (tag == isc_arg_gds)
 		{
 			intptr_t code = statusVector[i++];
 			if (code != 0)
 			{
-				gdsCodes.push_back(static_cast<int>(code));
+				arg.type = "gds";
+				arg.code = static_cast<int>(code);
+				args.push_back(arg);
 			}
 		}
 		else if (tag == isc_arg_warning)
@@ -98,7 +98,9 @@ void parseStatusVector(const intptr_t* statusVector,
 			intptr_t code = statusVector[i++];
 			if (code != 0)
 			{
-				warnings.push_back(static_cast<int>(code));
+				arg.type = "warning";
+				arg.code = static_cast<int>(code);
+				args.push_back(arg);
 			}
 		}
 		else if (tag == isc_arg_string || tag == isc_arg_interpreted || tag == isc_arg_sql_state)
@@ -106,7 +108,9 @@ void parseStatusVector(const intptr_t* statusVector,
 			const char* text = reinterpret_cast<const char*>(statusVector[i++]);
 			if (text)
 			{
-				messages.push_back(text);
+				arg.type = "string";
+				arg.strValue = text;
+				args.push_back(arg);
 			}
 		}
 		else if (tag == isc_arg_cstring)
@@ -115,13 +119,17 @@ void parseStatusVector(const intptr_t* statusVector,
 			const char* text = reinterpret_cast<const char*>(statusVector[i++]);
 			if (text)
 			{
-				messages.push_back(std::string(text, length));
+				arg.type = "string";
+				arg.strValue = std::string(text, length);
+				args.push_back(arg);
 			}
 		}
 		else if (tag == isc_arg_number)
 		{
 			intptr_t val = statusVector[i++];
-			messages.push_back(std::to_string(val));
+			arg.type = "number";
+			arg.numValue = static_cast<int>(val);
+			args.push_back(arg);
 		}
 		else
 		{
@@ -130,44 +138,43 @@ void parseStatusVector(const intptr_t* statusVector,
 	}
 }
 
-void parseStatus(fb::IStatus* status,
-                 std::vector<int>& gdsCodes,
-                 std::vector<int>& warnings,
-                 std::vector<std::string>& messages)
+void parseStatus(fb::IStatus* status, std::vector<StatusArg>& args)
 {
 	if (!status)
 		return;
-	parseStatusVector(status->getErrors(), gdsCodes, warnings, messages);
-	parseStatusVector(status->getWarnings(), gdsCodes, warnings, messages);
+	parseStatusVector(status->getErrors(), args);
+	parseStatusVector(status->getWarnings(), args);
+}
+
+Napi::Array buildStatusVectorArray(const Napi::Env env, const std::vector<StatusArg>& args)
+{
+	Napi::Array array = Napi::Array::New(env, args.size());
+	for (size_t i = 0; i < args.size(); ++i)
+	{
+		Napi::Object obj = Napi::Object::New(env);
+		obj.Set("type", args[i].type);
+		if (args[i].type == "gds" || args[i].type == "warning")
+		{
+			obj.Set("code", Napi::Number::New(env, args[i].code));
+		}
+		else if (args[i].type == "string")
+		{
+			obj.Set("value", Napi::String::New(env, args[i].strValue));
+		}
+		else if (args[i].type == "number")
+		{
+			obj.Set("value", Napi::Number::New(env, args[i].numValue));
+		}
+		array[i] = obj;
+	}
+	return array;
 }
 
 void attachStatusProperties(const Napi::Env env, Napi::Error& err, fb::IStatus* status)
 {
-	std::vector<int> gdsCodes;
-	std::vector<int> warnings;
-	std::vector<std::string> messages;
-
-	parseStatus(status, gdsCodes, warnings, messages);
-
-	Napi::Array gdsCodesArray = Napi::Array::New(env, gdsCodes.size());
-	for (size_t i = 0; i < gdsCodes.size(); ++i) {
-		gdsCodesArray[i] = Napi::Number::New(env, gdsCodes[i]);
-	}
-
-	Napi::Array warningsArray = Napi::Array::New(env, warnings.size());
-	for (size_t i = 0; i < warnings.size(); ++i) {
-		warningsArray[i] = Napi::Number::New(env, warnings[i]);
-	}
-
-	Napi::Array messagesArray = Napi::Array::New(env, messages.size());
-	for (size_t i = 0; i < messages.size(); ++i) {
-		messagesArray[i] = Napi::String::New(env, messages[i]);
-	}
-
-	Napi::Object errObj = err.Value();
-	errObj.Set("gdsCodes", gdsCodesArray);
-	errObj.Set("warnings", warningsArray);
-	errObj.Set("messages", messagesArray);
+	std::vector<StatusArg> args;
+	parseStatus(status, args);
+	err.Value().Set("statusVector", buildStatusVectorArray(env, args));
 }
 
 void rethrowException(const Napi::Env env)

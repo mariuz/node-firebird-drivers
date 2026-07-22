@@ -450,23 +450,104 @@ export interface ZonedDateEx extends ZonedDate {
   offset: number;
 }
 
+/** A status vector item representing an error or warning code and its associated arguments. */
+export interface FbStatus {
+  readonly type: 'gds' | 'warning';
+  readonly code: number;
+  readonly args: readonly (string | number)[];
+}
+
 /** Firebird error class representing a database exception. */
 export class FbError extends Error {
-  /** Array of GDS error codes. */
-  readonly gdsCodes: number[];
-  /** Array of warning codes. */
-  readonly warnings: number[];
-  /** Array of diagnostic/error message strings. */
-  readonly messages: string[];
+  override readonly name: string = 'FbError';
 
-  constructor(message: string, gdsCodes: number[], warnings: number[], messages: string[]) {
+  /** Array of structured status items. */
+  readonly status: readonly FbStatus[];
+
+  constructor(message: string, status: readonly FbStatus[]) {
     super(message);
-    this.name = 'FbError';
-    this.gdsCodes = gdsCodes;
-    this.warnings = warnings;
-    this.messages = messages;
+    this.status = status;
+  }
 
-    // Set the prototype explicitly (standard for extending built-in Error in TypeScript)
-    Object.setPrototypeOf(this, FbError.prototype);
+  /** Array of GDS error codes. */
+  get gdsCodes(): readonly number[] {
+    return this.status.filter(s => s.type === 'gds').map(s => s.code);
+  }
+
+  /** Array of warning codes. */
+  get warnings(): readonly number[] {
+    return this.status.filter(s => s.type === 'warning').map(s => s.code);
+  }
+
+  /** Array of diagnostic/error message strings. */
+  get messages(): readonly string[] {
+    const list: string[] = [];
+    for (const item of this.status) {
+      for (const arg of item.args) {
+        list.push(String(arg));
+      }
+    }
+    return list;
   }
 }
+
+/** Firebird GDS/error constants. */
+export namespace gdscodes {
+  export const isc_cancelled = 335544794;
+  export const isc_dsql_error = 335544569;
+  export const isc_sqlerr = 335544436;
+  export const isc_dsql_token_unk_err = 335544634;
+  export const isc_random = 335544382;
+  export const isc_io_error = 335544344;
+}
+
+/** Helper to parse raw flat status vector from C++ layer or wire parser into structured FbStatus items. */
+export function parseRawStatusVector(raw: any[]): FbStatus[] {
+  const result: FbStatus[] = [];
+  let current: { type: 'gds' | 'warning'; code: number; args: (string | number)[] } | undefined;
+
+  for (const item of raw) {
+    if (item.type === 'gds' || item.type === 'warning') {
+      if (current) {
+        result.push({
+          type: current.type,
+          code: current.code,
+          args: current.args
+        });
+      }
+      current = {
+        type: item.type,
+        code: item.code,
+        args: []
+      };
+    } else if (current && (item.type === 'string' || item.type === 'interpreted' || item.type === 'number')) {
+      current.args.push(item.value);
+    }
+  }
+
+  if (current) {
+    result.push({
+      type: current.type,
+      code: current.code,
+      args: current.args
+    });
+  }
+
+  return result;
+}
+
+/** Helper to build structured FbStatus items from legacy flat arrays when necessary. */
+export function buildStatusFromFlat(gdsCodes: number[], warnings: number[], messages: string[]): FbStatus[] {
+  const result: FbStatus[] = [];
+  for (const code of gdsCodes) {
+    result.push({ type: 'gds', code, args: [] });
+  }
+  for (const code of warnings) {
+    result.push({ type: 'warning', code, args: [] });
+  }
+  if (result.length > 0 && messages.length > 0) {
+    (result[0] as any).args = [...messages];
+  }
+  return result;
+}
+
