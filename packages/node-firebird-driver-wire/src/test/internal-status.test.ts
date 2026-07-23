@@ -4,14 +4,7 @@ import { gdscodes } from 'node-firebird-driver';
 import { statusArgument } from '../lib/constants';
 import { FirebirdWireError, assertSuccessfulResponse, parseStatusVector } from '../lib/status';
 
-const {
-  isc_cancelled,
-  isc_dsql_error,
-  isc_sqlerr,
-  isc_dsql_token_unk_err,
-  isc_random,
-  isc_io_error,
-} = gdscodes;
+const { isc_cancelled, isc_dsql_error, isc_sqlerr, isc_dsql_token_unk_err, isc_random, isc_io_error } = gdscodes;
 
 function int32(value: number): Buffer {
   const buffer = Buffer.alloc(4);

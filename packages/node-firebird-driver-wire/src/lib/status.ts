@@ -30,10 +30,7 @@ export class FirebirdWireError extends FbError {
   override readonly name = 'FirebirdWireError';
   readonly wireStatus: ParsedStatusVector;
 
-  constructor(
-    message: string,
-    wireStatus: ParsedStatusVector,
-  ) {
+  constructor(message: string, wireStatus: ParsedStatusVector) {
     super(message, parseRawStatusVector(wireStatus.statusArguments as any));
     this.wireStatus = wireStatus;
   }

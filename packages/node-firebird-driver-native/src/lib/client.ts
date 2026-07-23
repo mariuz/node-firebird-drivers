@@ -1,6 +1,13 @@
 import { AttachmentImpl } from './attachment';
 
-import { buildStatusFromFlat, Client, ConnectOptions, CreateDatabaseOptions, FbError, parseRawStatusVector } from 'node-firebird-driver';
+import {
+  buildStatusFromFlat,
+  Client,
+  ConnectOptions,
+  CreateDatabaseOptions,
+  FbError,
+  parseRawStatusVector,
+} from 'node-firebird-driver';
 
 import { AbstractClient } from 'node-firebird-driver/dist/lib/impl';
 

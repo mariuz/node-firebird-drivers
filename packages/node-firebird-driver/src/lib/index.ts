@@ -471,12 +471,12 @@ export class FbError extends Error {
 
   /** Array of GDS error codes. */
   get gdsCodes(): readonly number[] {
-    return this.status.filter(s => s.type === 'gds').map(s => s.code);
+    return this.status.filter((s) => s.type === 'gds').map((s) => s.code);
   }
 
   /** Array of warning codes. */
   get warnings(): readonly number[] {
-    return this.status.filter(s => s.type === 'warning').map(s => s.code);
+    return this.status.filter((s) => s.type === 'warning').map((s) => s.code);
   }
 
   /** Array of diagnostic/error message strings. */
@@ -512,13 +512,13 @@ export function parseRawStatusVector(raw: any[]): FbStatus[] {
         result.push({
           type: current.type,
           code: current.code,
-          args: current.args
+          args: current.args,
         });
       }
       current = {
         type: item.type,
         code: item.code,
-        args: []
+        args: [],
       };
     } else if (current && (item.type === 'string' || item.type === 'interpreted' || item.type === 'number')) {
       current.args.push(item.value);
@@ -529,7 +529,7 @@ export function parseRawStatusVector(raw: any[]): FbStatus[] {
     result.push({
       type: current.type,
       code: current.code,
-      args: current.args
+      args: current.args,
     });
   }
 
@@ -550,4 +550,3 @@ export function buildStatusFromFlat(gdsCodes: number[], warnings: number[], mess
   }
   return result;
 }
-
