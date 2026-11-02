@@ -678,6 +678,62 @@ export function runCommonTests(client: Client) {
     });
 
     describe('ResultSet', () => {
+      test('reads and writes timestamp with time zone values with numeric offsets', async () => {
+        const attachment = await client.createDatabase(
+          getDriverTestDatabaseUri(testConfig, 'ResultSet-timestamp-time-zone-offset.fdb'),
+        );
+        const transaction = await attachment.startTransaction();
+
+        try {
+          const serverMajorVersion = await getServerMajorVersion(attachment, transaction);
+
+          if (serverMajorVersion < 4) {
+            return;
+          }
+
+          const resultSet = await attachment.executeQuery(
+            transaction,
+            `select
+              timestamp '2021-06-07 11:56:32.123 -03:00',
+              timestamp '2021-06-07 11:56:32.123 +05:30'
+            from rdb$database`,
+          );
+
+          try {
+            const [columns] = await resultSet.fetch();
+            expect(columns).toHaveLength(2);
+            const negativeOffset = columns[0] as ZonedDateEx;
+            const positiveOffset = columns[1] as ZonedDateEx;
+
+            expect(negativeOffset.date.toISOString()).toBe('2021-06-07T14:56:32.123Z');
+            expect(negativeOffset.timeZone).toBe('-03:00');
+            expect(negativeOffset.offset).toBe(-180);
+            expect(positiveOffset.date.toISOString()).toBe('2021-06-07T06:26:32.123Z');
+            expect(positiveOffset.timeZone).toBe('+05:30');
+            expect(positiveOffset.offset).toBe(330);
+          } finally {
+            await resultSet.close();
+          }
+
+          const [writtenOffset] = await attachment.executeSingleton(
+            transaction,
+            'select cast(? as timestamp with time zone) from rdb$database',
+            [
+              {
+                date: new Date(Date.UTC(2021, 6 - 1, 7, 14, 56, 32, 123)),
+                timeZone: '-03:00',
+              } as ZonedDate,
+            ],
+          );
+          expect(writtenOffset.date.toISOString()).toBe('2021-06-07T14:56:32.123Z');
+          expect(writtenOffset.timeZone).toBe('-03:00');
+          expect(writtenOffset.offset).toBe(-180);
+        } finally {
+          await transaction.rollback();
+          await attachment.dropDatabase();
+        }
+      });
+
       test('#fetch()', async () => {
         const attachment = await client.createDatabase(getDriverTestDatabaseUri(testConfig, 'ResultSet-fetch.fdb'));
 
@@ -1091,6 +1147,35 @@ export function runCommonTests(client: Client) {
           await transaction.commit();
           await attachment.dropDatabase();
         }
+      });
+
+      test('OCTETS charset preserves raw bytes for read/write', async () => {
+        const filename = getDriverTestDatabaseUri(testConfig, 'ResultSet-octets-charset.fdb');
+
+        const attachment = await client.createDatabase(filename);
+        const transaction = await attachment.startTransaction();
+        await attachment.execute(transaction, 'create table t1 (id integer, x varchar(4) character set octets)');
+        await transaction.commitRetaining();
+
+        await attachment.execute(
+          transaction,
+          "insert into t1 (id, x) values (1, cast(x'000102ff' as varchar(4) character set octets))",
+        );
+
+        const bytes = Buffer.from([0x00, 0x7f, 0x80, 0xff]);
+        await attachment.execute(transaction, 'insert into t1 (id, x) values (2, ?)', [bytes]);
+
+        const row1 = await attachment.executeSingleton(transaction, 'select x from t1 where id = 1');
+        const row2 = await attachment.executeSingleton(transaction, 'select x from t1 where id = 2');
+
+        expect(Buffer.isBuffer(row1[0])).toBeTruthy();
+        expect(row1[0]).toEqual(Buffer.from([0x00, 0x01, 0x02, 0xff]));
+
+        expect(Buffer.isBuffer(row2[0])).toBeTruthy();
+        expect(row2[0]).toEqual(bytes);
+
+        await transaction.commit();
+        await attachment.dropDatabase();
       });
 
       test('#fetch() with fetchSize', async () => {

@@ -1,5 +1,5 @@
-import * as os from 'os';
-const littleEndian = os.endianness() === 'LE';
+// Portable endianness detection (works in Node.js and React Native; no `os` package).
+const littleEndian = new Uint8Array(Uint16Array.of(1).buffer)[0] === 1;
 
 import { AbstractAttachment } from './attachment';
 import { decodeDate, decodeTime, encodeDate, encodeTime } from './date-time';
@@ -65,6 +65,7 @@ export namespace dpb {
   export const specific_auth_data = 84;
   export const auth_plugin_list = 85;
   export const auth_plugin_name = 86;
+  export const search_path = 105;
 }
 
 /** TPB constants. */
@@ -154,6 +155,7 @@ export namespace cancelType {
 
 export namespace charSets {
   export const none = 0;
+  export const octets = 1;
   export const ascii = 2;
 }
 
@@ -184,6 +186,21 @@ export function createDpb(options?: ConnectOptions | CreateDatabaseOptions): Buf
 
   if (options.role) {
     ret += `${code(dpb.sql_role_name)}${code(options.role.length)}${options.role}`;
+  }
+
+  const searchPath = Array.isArray(options.searchPath)
+    ? options.searchPath
+        .map((schema) => schema.trim())
+        .filter((schema) => schema.length > 0)
+        .join(',')
+    : options.searchPath?.trim();
+
+  if (searchPath) {
+    if (searchPath.length > 255) {
+      throw new Error('ConnectOptions.searchPath length cannot exceed 255.');
+    }
+
+    ret += `${code(dpb.search_path)}${code(searchPath.length)}${searchPath}`;
   }
 
   const createOptions = options as CreateDatabaseOptions;
@@ -360,10 +377,14 @@ export function createDataReader(descriptors: Descriptor[]): DataReader {
       switch (descriptor.type) {
         // SQL_TEXT is handled changing its descriptor to SQL_VARYING with IMetadataBuilder.
         case sqlTypes.SQL_VARYING: {
-          // TODO: octets
           const varLength = dataView.getUint16(descriptor.offset, littleEndian);
-          const encoding = descriptor.charSet === charSets.none ? attachment.charSetForNONE : 'utf8';
           const buf = Buffer.from(buffer.buffer, descriptor.offset + 2, varLength);
+
+          if (descriptor.charSet === charSets.octets) {
+            return Buffer.from(buf);
+          }
+
+          const encoding = descriptor.charSet === charSets.none ? attachment.charSetForNONE : 'utf8';
           return decodeString(buf, encoding);
         }
 
@@ -576,16 +597,20 @@ export function createDataWriter(descriptors: Descriptor[]): DataWriter {
       switch (descriptor.type) {
         // SQL_TEXT is handled changing its descriptor to SQL_VARYING with IMetadataBuilder.
         case sqlTypes.SQL_VARYING: {
-          //// TODO: octets
-          const str = value as string;
-          const encoding = descriptor.charSet === charSets.none ? attachment.charSetForNONE : 'utf8';
-          const strBuffer = encodeString(str, encoding);
+          let bytesArray: Uint8Array;
 
-          const bytesArray = Uint8Array.from(strBuffer);
+          if (descriptor.charSet === charSets.octets) {
+            bytesArray = Uint8Array.from(value as Uint8Array);
+          } else {
+            const str = value as string;
+            const encoding = descriptor.charSet === charSets.none ? attachment.charSetForNONE : 'utf8';
+            const strBuffer = encodeString(str, encoding);
+            bytesArray = Uint8Array.from(strBuffer);
+          }
 
           if (bytesArray.length > descriptor.length) {
             throw new Error(
-              `Length in bytes of string '${str}' (${bytesArray.length}) is ` +
+              `Length in bytes of value (${bytesArray.length}) is ` +
                 `greater than maximum expect length ${descriptor.length}.`,
             );
           }

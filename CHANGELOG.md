@@ -1,3 +1,15 @@
+## Aug, 29, 2026
+
+- Fix [#177](https://github.com/asfernandes/node-firebird-drivers/issues/177) - Improve performance when fetching large result sets with the wire driver.
+
+## Aug, 09, 2026
+
+- Fix [#174](https://github.com/asfernandes/node-firebird-drivers/issues/174) - Support for offset-based time zones.
+
+## Aug, 08, 2026
+
+- Feature [#172](https://github.com/asfernandes/node-firebird-drivers/issues/172) - Add a ConnectOptions option for the Firebird 6 schema search path.
+
 ## May, 04, 2026
 
 - Feature [#166](https://github.com/asfernandes/node-firebird-drivers/issues/166) - Create pure Node.js driver that do not depend on native fbclient.
