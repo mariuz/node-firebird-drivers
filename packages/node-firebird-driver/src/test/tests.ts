@@ -5,7 +5,6 @@ import {
   DatabaseReadWriteMode,
   errorCodes,
   FbError,
-  gdscodes,
   StatementType,
   TransactionIsolation,
   ZonedDate,
@@ -200,7 +199,6 @@ export function runCommonTests(client: Client) {
           expect(error).toBeInstanceOf(FbError);
           const fbError = error as FbError;
           expect(fbError.errors).toContain(errorCodes.DSQL_ERROR);
-          expect(fbError.gdsCodes).toContain(gdscodes.isc_dsql_error);
           expect(fbError.message).toBe(
             'Dynamic SQL Error\n' + '-SQL error code = -104\n' + '-Token unknown - line 1, column 8\n' + '-select',
           );

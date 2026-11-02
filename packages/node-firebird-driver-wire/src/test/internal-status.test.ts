@@ -1,10 +1,17 @@
 import { describe, expect, test } from 'vitest';
 
-import { gdscodes } from 'node-firebird-driver';
+import { errorCodes } from 'node-firebird-driver';
 import { statusArgument } from '../lib/constants';
 import { FirebirdWireError, assertSuccessfulResponse, parseStatusVector } from '../lib/status';
 
-const { isc_cancelled, isc_dsql_error, isc_sqlerr, isc_dsql_token_unk_err, isc_random, isc_io_error } = gdscodes;
+const {
+  CANCELLED: isc_cancelled,
+  DSQL_ERROR: isc_dsql_error,
+  SQLERR: isc_sqlerr,
+  DSQL_TOKEN_UNK_ERR: isc_dsql_token_unk_err,
+  RANDOM: isc_random,
+  IO_ERROR: isc_io_error,
+} = errorCodes;
 
 function int32(value: number): Buffer {
   const buffer = Buffer.alloc(4);

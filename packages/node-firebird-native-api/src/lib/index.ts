@@ -30,5 +30,4 @@ export const queueEvent: (
 export const cancelEvent: (eventCallback: EventCallback) => Promise<void> = native.cancelEvent;
 
 export * from './cloop-gen';
-export * from './error-codes';
 export * from './error';
